@@ -1,0 +1,28 @@
+{
+  "name": "Misar Systems | مسار سيستمز",
+  "short_name": "Misar",
+  "description": "منصة مسار سيستمز للتسوق والخدمات في قنا",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a237e",
+  "theme_color": "#1a237e",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/XktM4crn/1767120438295.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/XktM4crn/1767120438295.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "gcm_sender_id": "103953800507"
+}

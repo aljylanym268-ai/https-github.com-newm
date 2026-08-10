@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>سلة التسوق - Misar Systems</title>
+    <meta name="theme-color" content="#1a237e">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="https://i.ibb.co/XktM4crn/1767120438295.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-container">
+    <div class="status-bar"></div>
+    <div class="loading" id="loadingScreen" style="display:none;"><div class="loading-spinner"></div><p>جاري التحميل...</p></div>
+
+    <div class="screen active" id="cartScreen">
+        <div class="app-header"><div class="header-content"><div class="header-left"><button class="back-btn active" onclick="window.location.href='index.html'"><i class="fas fa-arrow-right"></i></button><div class="header-title">سلة التسوق</div></div></div></div>
+        <!-- شريط الأدوات (مبسط) -->
+        <div class="cart-toolbar">
+            <button class="cart-tool-btn" onclick="toggleSelectAll()"><i class="fas fa-check-double"></i> تحديد الكل</button>
+            <button class="cart-tool-btn" onclick="deselectAll()"><i class="fas fa-times"></i> إلغاء التحديد</button>
+            <button class="cart-tool-btn danger" onclick="deleteSelected()"><i class="fas fa-trash"></i> حذف المحدد</button>
+            <span class="selected-count" id="selectedCount">0</span>
+        </div>
+        <div class="cart-items" id="cartItems"></div>
+        <div class="cart-summary">
+            <div class="cart-total">
+                <div class="total-label">المجموع الفرعي:</div>
+                <div class="total-amount" id="cartSubtotal">0 ج.م</div>
+            </div>
+            <div class="cart-total" id="discountRow" style="display:none;">
+                <div class="total-label" style="color:#e53935;">الخصم:</div>
+                <div class="total-amount" id="cartDiscount" style="color:#e53935;">-0 ج.م</div>
+            </div>
+            <div class="cart-total">
+                <div class="total-label">رسوم التوصيل:</div>
+                <div class="total-amount" id="cartDeliveryFee">0 ج.م</div>
+            </div>
+            <div class="cart-total" style="border-top:2px solid var(--gold); padding-top:10px;">
+                <div class="total-label" style="font-size:1.2rem;">الإجمالي:</div>
+                <div class="total-amount" id="cartTotal" style="font-size:1.8rem;">0 ج.م</div>
+            </div>
+            <button class="checkout-btn" onclick="openCheckout()">
+                <i class="fas fa-shopping-bag"></i> 
+                إتمام الشراء (<span id="checkoutSelectedCount">0</span> منتج)
+            </button>
+        </div>
+    </div>
+
+    <div id="checkoutModal" class="modal" onclick="if(event.target===this) closeCheckoutModal()"><div class="modal-content"><h3 style="color:#1a237e; margin-bottom:15px;">إتمام الطلب</h3><div class="input-group"><label class="input-label">الاسم الكامل</label><input type="text" id="checkoutName" class="input-field" placeholder="أدخل اسمك"></div><div class="input-group"><label class="input-label">رقم الهاتف</label><input type="tel" id="checkoutPhone" class="input-field" placeholder="أدخل رقم الهاتف"></div><div class="input-group"><label class="input-label">العنوان</label><textarea id="checkoutAddress" class="input-field" rows="2" placeholder="أدخل العنوان بالتفصيل"></textarea></div><div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="confirmOrder()">تأكيد الطلب</button><button class="google-btn" style="flex:1;" onclick="closeCheckoutModal()">إلغاء</button></div></div></div>
+
+    <div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner-large"></div></div>
+</div>
+
+<script src="js/supabase.js"></script>
+<script src="js/products.js"></script>
+<script src="js/product.js"></script>
+<script src="js/cart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session) {
+            appState.user = { id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata };
+            await loadUserData();
+        }
+        await loadProductsFromDB();
+        await loadCart();
+        await updateCartBadgeFromDB();
+        document.getElementById('loadingScreen').style.display = 'none';
+    });
+</script>
+</body>
+</html>
