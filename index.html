@@ -356,8 +356,7 @@
             </div>
             <div style="margin: 20px 0 10px; color:#1a237e; font-weight:700;">إعدادات الحساب</div>
             <a href="#" class="menu-item" onclick="showChangePasswordModal()"><div class="menu-icon"><i class="fas fa-key"></i></div><div class="menu-text">تغيير كلمة المرور</div><i class="fas fa-chevron-left menu-arrow"></i></a>
-<a href="#" class="menu-item" onclick="showSecurityModal()"><div class="menu-icon"><i class="fas fa-shield-alt"></i></div><div class="menu-text">إعدادات الأمان</div><i class="fas fa-chevron-left menu-arrow"></i></a>
-            <a href="#" class="menu-item" onclick="showNotificationSettingsModal()"><div class="menu-icon"><i class="fas fa-bell"></i></div><div class="menu-text">إعدادات الإشعارات</div><i class="fas fa-chevron-left menu-arrow"></i></a>
+            <a href="#" class="menu-item" onclick="showSecurityModal()"><div class="menu-icon"><i class="fas fa-shield-alt"></i></div><div class="menu-text">إعدادات الأمان</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item warning" onclick="switchAccount()"><div class="menu-icon"><i class="fas fa-exchange-alt"></i></div><div class="menu-text">تبديل الحساب</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item danger" id="logoutMenuItem" style="display:none;" onclick="confirmLogout()"><div class="menu-icon"><i class="fas fa-sign-out-alt"></i></div><div class="menu-text">تسجيل الخروج</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="loginMenuItem" onclick="showScreen('loginScreen')"><div class="menu-icon"><i class="fas fa-sign-in-alt"></i></div><div class="menu-text">تسجيل الدخول</div><i class="fas fa-chevron-left menu-arrow"></i></a>
@@ -902,16 +901,6 @@
         </div>
     </div>
 
-<div id="notificationSettingsModal" class="modal" onclick="if(event.target===this) closeModal('notificationSettingsModal')">
-        <div class="modal-content">
-            <h3 style="color:#1a237e; margin-bottom:15px;"><i class="fas fa-bell"></i> إعدادات الإشعارات</h3>
-            <p style="margin-bottom:20px;">تحكم في إشعارات النظام التي تظهر على جهازك حتى عند إغلاق التطبيق.</p>
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;"><span>تفعيل إشعارات النظام</span><label class="switch"><input type="checkbox" id="notificationsToggle"><span class="slider round"></span></label></div>
-            <p id="notificationSettingsStatus" style="color:#666; font-size:0.9rem;">جاري الفحص...</p>
-            <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="sendTestNotification()"><i class="fas fa-paper-plane"></i> إرسال إشعار تجريبي</button><button class="google-btn" style="flex:1;" onclick="closeModal('notificationSettingsModal')">إغلاق</button></div>
-        </div>
-    </div>
-
     <div id="directCheckoutModal" class="modal" onclick="if(event.target===this) closeDirectCheckout()">
         <div class="modal-content">
             <h3 style="color:#1a237e; margin-bottom:15px;"><i class="fas fa-bolt" style="color:#D4AF37;"></i> شراء الآن</h3>
@@ -1381,19 +1370,10 @@ if (session) {
         // مستمع تغيير نوع المستلم في الإشعارات
         document.getElementById('notificationRecipients')?.addEventListener('change', function() {
             const specificEmail = document.getElementById('specificUserEmail');
-if (this.value === 'specific') {
+            if (this.value === 'specific') {
                 specificEmail.style.display = 'block';
             } else {
                 specificEmail.style.display = 'none';
-            }
-        });
-
-        // مستمع تبديل إعدادات الإشعارات
-        document.getElementById('notificationsToggle')?.addEventListener('change', function() {
-            if (typeof toggleSystemNotifications === 'function') {
-                toggleSystemNotifications(this.checked);
-            } else {
-                showToast('حدث خطأ في النظام', 'error');
             }
         });
 

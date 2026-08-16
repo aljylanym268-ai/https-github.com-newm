@@ -4235,3 +4235,221 @@ body {
         font-size: 0.6em;
     }
 }
+/* ====== تنسيقات صفحة الخدمات الجديدة ====== */
+
+.services-header-message {
+    background: linear-gradient(145deg, var(--blue-royal) 0%, var(--blue-dark) 50%, var(--brown-dark) 100%);
+    border-radius: var(--radius-card);
+    padding: 30px 20px;
+    margin-bottom: 25px;
+    text-align: center;
+    border: 2px solid var(--gold);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    position: relative;
+    overflow: hidden;
+}
+.services-header-message::before {
+    content: "𓂀 𓋴 𓅃";
+    position: absolute;
+    bottom: 5px;
+    right: 15px;
+    font-size: 3rem;
+    opacity: 0.06;
+    letter-spacing: 10px;
+    pointer-events: none;
+}
+.services-header-icon {
+    font-size: 3rem;
+    margin-bottom: 8px;
+    animation: floatIcon 2.5s ease-in-out infinite;
+}
+@keyframes floatIcon {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+.services-header-title {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: var(--gold);
+    margin-bottom: 8px;
+    text-shadow: 0 0 20px var(--gold-shadow);
+    letter-spacing: 1px;
+}
+.services-header-subtitle {
+    font-size: 1rem;
+    color: var(--text-light);
+    opacity: 0.9;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+.service-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 14px;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.service-status-badge.coming-soon {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+.service-status-badge.available {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #28a745;
+}
+.service-status-badge.unavailable {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #dc3545;
+}
+.service-status-badge i {
+    font-size: 0.7rem;
+}
+
+.book-service-btn.coming-soon-btn {
+    background: #e9ecef;
+    color: #adb5bd;
+    border: 1px solid #dee2e6;
+    cursor: not-allowed;
+    box-shadow: none;
+    opacity: 0.8;
+}
+.book-service-btn.coming-soon-btn:hover {
+    transform: none;
+    box-shadow: none;
+}
+.book-service-btn.coming-soon-btn:active {
+    transform: none;
+}
+
+.service-card {
+    background: var(--sand);
+    border-radius: var(--radius-card);
+    padding: 18px 16px;
+    box-shadow: var(--shadow-card);
+    border: 2px solid var(--gold);
+    transition: var(--transition);
+}
+.service-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(212,175,55,0.18);
+}
+.service-card-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.service-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.service-header-info {
+    flex: 1;
+    min-width: 100px;
+}
+.service-title {
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--brown-dark);
+}
+.service-price {
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+.service-desc {
+    color: var(--brown-mid);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 4px 0;
+}
+.service-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin: 4px 0 8px;
+}
+.service-feature {
+    font-size: 0.8rem;
+    color: var(--brown-mid);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.service-feature i {
+    color: var(--gold);
+    font-size: 0.7rem;
+}
+.service-actions {
+    margin-top: 6px;
+}
+.service-actions .book-service-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: var(--radius-btn);
+    font-weight: 900;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: var(--transition);
+}
+.service-actions .book-service-btn:not(.coming-soon-btn) {
+    background: linear-gradient(145deg, var(--gold), var(--gold-dark));
+    color: var(--blue-royal);
+    box-shadow: var(--shadow-gold);
+}
+.service-actions .book-service-btn:not(.coming-soon-btn):hover {
+    transform: translateY(-2px);
+}
+.service-actions .book-service-btn:not(.coming-soon-btn):active {
+    transform: scale(0.96);
+}
+
+@media (max-width: 480px) {
+    .services-header-title {
+        font-size: 1.4rem;
+    }
+    .services-header-subtitle {
+        font-size: 0.9rem;
+    }
+    .services-header-icon {
+        font-size: 2.2rem;
+    }
+    .service-header {
+        gap: 8px;
+    }
+    .service-status-badge {
+        font-size: 0.65rem;
+        padding: 3px 10px;
+    }
+    .service-title {
+        font-size: 1rem;
+    }
+    .service-features {
+        gap: 4px 8px;
+    }
+    .service-feature {
+        font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .services-header-message {
+        padding: 22px 16px;
+        margin-bottom: 18px;
+    }
+}

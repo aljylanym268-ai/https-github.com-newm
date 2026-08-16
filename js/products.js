@@ -20,7 +20,7 @@ function loadMarketProducts() {
     if (!container) return;
     container.innerHTML = '';
     appState.products.forEach(p => container.appendChild(createProductCard(p)));
-    
+
     // ربط حدث البحث في حقل الإدخال (مرة واحدة فقط لتجنب تكرار المستمعين)
     const searchInput = document.getElementById('marketSearchInput');
     if (searchInput && !searchInput._searchListenerAttached) {
@@ -36,13 +36,13 @@ function filterMarketProducts(query) {
     const container = document.getElementById('marketProducts');
     if (!container) return;
     container.innerHTML = '';
-    
+
     // إظهار/إخفاء زر مسح البحث
     const clearBtn = document.getElementById('clearSearch');
     if (clearBtn) {
         clearBtn.style.display = query ? 'block' : 'none';
     }
-    
+
     const searchTerm = query.toLowerCase().trim();
     const filtered = appState.products.filter(p => {
         if (!searchTerm) return true;
@@ -51,7 +51,7 @@ function filterMarketProducts(query) {
         const cat = (p.category || '').toLowerCase();
         return name.includes(searchTerm) || desc.includes(searchTerm) || cat.includes(searchTerm);
     });
-    
+
     if (filtered.length === 0) {
         container.innerHTML = '<p style="grid-column:span2; text-align:center; padding:30px; color:#666;">لا توجد منتجات مطابقة للبحث</p>';
     } else {
@@ -267,15 +267,77 @@ async function prepareOrderSeller(orderId) { showLoading(true); try { const { da
 function loadServices() {
     const container = document.getElementById('servicesList');
     if (!container) return;
-    container.innerHTML = '';
+
+    // إضافة الرسالة الترحيبية في أعلى الصفحة
+    let headerHtml = `
+        <div class="services-header-message">
+            <div class="services-header-icon">🚀</div>
+            <h2 class="services-header-title">خدمات MISAR الجديدة قادمة قريبًا</h2>
+            <p class="services-header-subtitle">نعمل حاليًا على تجهيز مجموعة من الخدمات الجديدة لتقديم تجربة أفضل لك. ابقَ متيقظاً لإطلاقها الرسمي!</p>
+        </div>
+    `;
+    container.innerHTML = headerHtml;
+
+    // عرض الخدمات كبطاقات
     appState.services.forEach(s => {
         const card = document.createElement('div');
         card.className = 'service-card';
-        card.innerHTML = `<div class="service-header"><div class="service-icon"><i class="${s.icon}"></i></div><div><div class="service-title">${s.name}</div><div class="service-price">${s.price}</div></div></div><div class="service-desc">${s.description}</div><button class="book-service-btn" onclick="bookService(${s.id})"><i class="fas fa-calendar-check"></i> حجز الخدمة</button>`;
+
+        const status = s.status || 'coming_soon';
+        const isComingSoon = status === 'coming_soon';
+        const isAvailable = status === 'available';
+        const isTemporarilyUnavailable = status === 'temporarily_unavailable';
+
+        let statusBadge = '';
+        let buttonHtml = '';
+
+        if (isComingSoon) {
+            statusBadge = `<span class="service-status-badge coming-soon"><i class="fas fa-clock"></i> قريبًا</span>`;
+            buttonHtml = `<button class="book-service-btn coming-soon-btn" disabled><i class="fas fa-bell"></i> 🔔 قريبًا</button>`;
+        } else if (isAvailable) {
+            statusBadge = `<span class="service-status-badge available"><i class="fas fa-check-circle"></i> متاحة الآن</span>`;
+            buttonHtml = `<button class="book-service-btn" onclick="bookService(${s.id})"><i class="fas fa-calendar-check"></i> حجز الخدمة</button>`;
+        } else if (isTemporarilyUnavailable) {
+            statusBadge = `<span class="service-status-badge unavailable"><i class="fas fa-exclamation-circle"></i> متوقفة مؤقتًا</span>`;
+            buttonHtml = `<button class="book-service-btn coming-soon-btn" disabled><i class="fas fa-pause-circle"></i> غير متاحة</button>`;
+        }
+
+        card.innerHTML = `
+            <div class="service-card-inner">
+                <div class="service-header">
+                    <div class="service-icon"><i class="${s.icon}"></i></div>
+                    <div class="service-header-info">
+                        <div class="service-title">${escapeHTML(s.name)}</div>
+                        <div class="service-price">${escapeHTML(s.price)}</div>
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div class="service-desc">${escapeHTML(s.description)}</div>
+                ${s.features ? `<div class="service-features">${s.features.map(f => `<span class="service-feature"><i class="fas fa-check-circle"></i> ${escapeHTML(f)}</span>`).join('')}</div>` : ''}
+                <div class="service-actions">
+                    ${buttonHtml}
+                </div>
+            </div>
+        `;
         container.appendChild(card);
     });
 }
-function bookService(serviceId) { const service = appState.services.find(s => s.id === serviceId); if (service) showToast(`تم حجز خدمة ${service.name} بنجاح`, 'success'); }
+function bookService(serviceId) {
+    const service = appState.services.find(s => s.id === serviceId);
+    if (!service) {
+        showToast('الخدمة غير موجودة', 'error');
+        return;
+    }
+    if (service.status === 'coming_soon') {
+        showToast('هذه الخدمة قادمة قريباً، تابعنا لإطلاقها!', 'info');
+        return;
+    }
+    if (service.status === 'temporarily_unavailable') {
+        showToast('هذه الخدمة متوقفة مؤقتاً، عاود المحاولة لاحقاً', 'warning');
+        return;
+    }
+    showToast(`تم حجز خدمة ${service.name} بنجاح`, 'success');
+}
 
 // ========== أدوات متجر البائع ==========
 function getStoreUrl() { let baseUrl = window.location.origin + window.location.pathname; baseUrl = baseUrl.split('?')[0]; if (appState.userData.username) return `${baseUrl}?store=${encodeURIComponent(appState.userData.username)}`; else return `${baseUrl}?store=${encodeURIComponent(appState.user.id)}`; }
@@ -387,14 +449,14 @@ function renderProductsTableAdmin(data) {
 // حذف منتج نهائياً من قاعدة البيانات (استخدام بحذر)
 async function hardDeleteProductAdmin(productId) {
     if (!productId) throw new Error('معرف المنتج مطلوب');
-    
+
     const { data, error } = await supabaseClient
         .from('products')
         .delete()
         .eq('id', productId)
         .select()
         .maybeSingle();
-    
+
     if (error) throw error;
     await logActivity(appState.user.id, 'hard_delete_product_admin', { product_id: productId });
     return data;
@@ -420,15 +482,15 @@ window.deleteProductAdminConfirm = async function(productId) {
         if (error) throw error;
 
         showToast('✅ تم حذف المنتج وجميع طلباته بنجاح', 'success');
-        
+
         // تحديث الجدول وعرض المنتجات
         await loadProductsTableAdmin();
-        
+
         // تحديث قائمة المنتجات في المتجر
         await loadProductsFromDB();
         loadMarketProducts();
         loadFeaturedProducts();
-        
+
     } catch (err) {
         console.error('❌ خطأ في حذف المنتج:', err);
         showToast(err.message || 'فشل حذف المنتج', 'error');
