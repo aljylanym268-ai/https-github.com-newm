@@ -14,49 +14,170 @@ function loadFeaturedProducts() {
     appState.products.slice(0,4).forEach(p => container.appendChild(createProductCard(p)));
 }
 
-// ========== عرض منتجات المتجر ==========
-function loadMarketProducts() {
-    const container = document.getElementById('marketProducts');
+// ========== تصنيفات ومطابقة الأقسام ==========
+let currentMarketCategory = 'all';
+
+function getCategoryNameByKey(key) {
+    const names = {
+        'electronics': 'إلكترونيات وأجهزة',
+        'fashion': 'أزياء وموضة',
+        'home': 'منزل وديكور',
+        'food': 'أطعمة ومأكولات',
+        'beauty': 'جمال وعناية',
+        'sports': 'رياضة ولياقة'
+    };
+    return names[key] || key;
+}
+
+// ========== فتح قسم وتصفح منتجاته ==========
+async function openCategory(categoryKey, categoryTitle) {
+    const title = categoryTitle || getCategoryNameByKey(categoryKey);
+    showScreen('categoryProductsScreen');
+    const titleEl = document.getElementById('categoryScreenTitle');
+    if (titleEl) titleEl.textContent = title;
+    await loadCategoryProducts(categoryKey, 'categoryProductsGrid', title);
+}
+
+// ========== تحميل المنتجات لأي قسم مخصص ==========
+async function loadCategoryProducts(categoryKey, containerId, categoryTitle) {
+    const container = document.getElementById(containerId);
     if (!container) return;
+    container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px;"><div class="loading-spinner"></div><p style="margin-top:10px; color:var(--brown-mid);">جاري تحميل المنتجات...</p></div>';
+
+    // التأكد من تحميل المنتجات إن لم تكن محملة بعد
+    if (!appState.products || appState.products.length === 0) {
+        await loadProductsFromDB();
+    }
+
     container.innerHTML = '';
-    appState.products.forEach(p => container.appendChild(createProductCard(p)));
+    const catKey = (categoryKey || '').toLowerCase().trim();
+
+    const categoryKeywords = {
+        'electronics': ['electronics', 'إلكترونيات', 'الكترونيات', 'هواتف', 'أجهزة', 'اجهزة', 'لابتوب', 'موبايل', 'سماعات', 'شاشات'],
+        'fashion': ['fashion', 'أزياء', 'ازياء', 'ملابس', 'أحذية', 'احذية', 'إكسسوارات', 'اكسسوارات', 'شنط', 'فستان', 'قميص'],
+        'home': ['home', 'منزل', 'أثاث', 'اثاث', 'ديكور', 'مطبخ', 'مفروشات', 'سجاد', 'غرف'],
+        'food': ['food', 'أطعمة', 'اطعمة', 'طعام', 'مأكولات', 'ماكولات', 'حلويات', 'مشروبات', 'وجبات', 'اكل'],
+        'beauty': ['beauty', 'جمال', 'عناية', 'جمال وعناية', 'عطور', 'مكياج', 'تجميل', 'بشرة', 'مستحضرات'],
+        'sports': ['sports', 'رياضة', 'لياقة', 'رياضية', 'معدات', 'جيم', 'تمارين']
+    };
+
+    const targetKeywords = categoryKeywords[catKey] || [catKey];
+
+    const matchedProducts = (appState.products || []).filter(p => {
+        const prodCat = (p.category || '').toLowerCase().trim();
+        const prodName = (p.name || '').toLowerCase().trim();
+        const prodDesc = (p.description || '').toLowerCase().trim();
+
+        return targetKeywords.some(kw => {
+            const k = kw.toLowerCase();
+            return prodCat === k || prodCat.includes(k) || prodName.includes(k) || prodDesc.includes(k);
+        });
+    });
+
+    if (matchedProducts.length === 0) {
+        const displayTitle = categoryTitle || getCategoryNameByKey(categoryKey);
+        container.innerHTML = `
+            <div class="empty-category-state" style="grid-column: 1 / -1; text-align: center; padding: 45px 20px; background: rgba(255,255,255,0.85); border-radius: 20px; border: 1.5px dashed var(--gold); margin: 20px auto; max-width: 500px;">
+                <div style="font-size: 3.5rem; margin-bottom: 12px; color: var(--gold);">🛍️</div>
+                <h3 style="color: var(--blue-royal); margin-bottom: 8px; font-weight: 800; font-size: 1.25rem;">لا توجد منتجات في قسم "${escapeHTML(displayTitle)}" حالياً</h3>
+                <p style="color: var(--brown-mid); font-size: 0.95rem; margin-bottom: 22px; line-height: 1.6;">جاري إضافة منتجات جديدة ومميزة لهذا القسم قريباً. يمكنك تصفح باقي الأقسام في المتجر!</p>
+                <button class="action-btn" onclick="showScreen('marketScreen')" style="display: inline-flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 10px 24px; margin: 0 auto; width: auto; font-weight: 800; color: var(--blue-royal); background: var(--gold); border: none; border-radius: 25px; cursor: pointer;">
+                    <i class="fas fa-store"></i> <span>تصفح كل المنتجات</span>
+                </button>
+            </div>
+        `;
+    } else {
+        matchedProducts.forEach(p => container.appendChild(createProductCard(p)));
+    }
+}
+
+// ========== عرض منتجات المتجر وفلترتها ==========
+function loadMarketProducts() {
+    applyMarketFilters();
 
     // ربط حدث البحث في حقل الإدخال (مرة واحدة فقط لتجنب تكرار المستمعين)
     const searchInput = document.getElementById('marketSearchInput');
     if (searchInput && !searchInput._searchListenerAttached) {
         searchInput.addEventListener('input', function() {
-            filterMarketProducts(this.value);
+            applyMarketFilters();
         });
         searchInput._searchListenerAttached = true;
     }
 }
 
-// ========== فلترة منتجات المتجر ==========
-function filterMarketProducts(query) {
+function filterMarketByCategory(category, btnElement) {
+    currentMarketCategory = category;
+
+    // تحديث مظهر الشرائح (Chips)
+    document.querySelectorAll('.market-categories-bar .filter-chip').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = 'var(--sand)';
+        btn.style.color = 'var(--brown-dark)';
+    });
+    if (btnElement) {
+        btnElement.classList.add('active');
+        btnElement.style.background = 'var(--blue-royal)';
+        btnElement.style.color = 'var(--gold)';
+    }
+
+    applyMarketFilters();
+}
+
+function applyMarketFilters() {
     const container = document.getElementById('marketProducts');
     if (!container) return;
     container.innerHTML = '';
 
-    // إظهار/إخفاء زر مسح البحث
+    const searchInput = document.getElementById('marketSearchInput');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
     const clearBtn = document.getElementById('clearSearch');
-    if (clearBtn) {
-        clearBtn.style.display = query ? 'block' : 'none';
+    if (clearBtn) clearBtn.style.display = searchTerm ? 'block' : 'none';
+
+    const categoryKeywords = {
+        'electronics': ['electronics', 'إلكترونيات', 'الكترونيات', 'هواتف', 'أجهزة', 'اجهزة', 'لابتوب', 'موبايل', 'سماعات', 'شاشات'],
+        'fashion': ['fashion', 'أزياء', 'ازياء', 'ملابس', 'أحذية', 'احذية', 'إكسسوارات', 'اكسسوارات', 'شنط', 'فستان', 'قميص'],
+        'home': ['home', 'منزل', 'أثاث', 'اثاث', 'ديكور', 'مطبخ', 'مفروشات', 'سجاد', 'غرف'],
+        'food': ['food', 'أطعمة', 'اطعمة', 'طعام', 'مأكولات', 'ماكولات', 'حلويات', 'مشروبات', 'وجبات', 'اكل'],
+        'beauty': ['beauty', 'جمال', 'عناية', 'جمال وعناية', 'عطور', 'مكياج', 'تجميل', 'بشرة', 'مستحضرات'],
+        'sports': ['sports', 'رياضة', 'لياقة', 'رياضية', 'معدات', 'جيم', 'تمارين']
+    };
+
+    let filtered = appState.products || [];
+
+    // فلترة حسب القسم إن تم اختياره
+    if (currentMarketCategory && currentMarketCategory !== 'all') {
+        const targetKeywords = categoryKeywords[currentMarketCategory] || [currentMarketCategory];
+        filtered = filtered.filter(p => {
+            const prodCat = (p.category || '').toLowerCase().trim();
+            const prodName = (p.name || '').toLowerCase().trim();
+            const prodDesc = (p.description || '').toLowerCase().trim();
+            return targetKeywords.some(kw => {
+                const k = kw.toLowerCase();
+                return prodCat === k || prodCat.includes(k) || prodName.includes(k) || prodDesc.includes(k);
+            });
+        });
     }
 
-    const searchTerm = query.toLowerCase().trim();
-    const filtered = appState.products.filter(p => {
-        if (!searchTerm) return true;
-        const name = (p.name || '').toLowerCase();
-        const desc = (p.description || '').toLowerCase();
-        const cat = (p.category || '').toLowerCase();
-        return name.includes(searchTerm) || desc.includes(searchTerm) || cat.includes(searchTerm);
-    });
+    // فلترة حسب نص البحث
+    if (searchTerm) {
+        filtered = filtered.filter(p => {
+            const name = (p.name || '').toLowerCase();
+            const desc = (p.description || '').toLowerCase();
+            const cat = (p.category || '').toLowerCase();
+            return name.includes(searchTerm) || desc.includes(searchTerm) || cat.includes(searchTerm);
+        });
+    }
 
     if (filtered.length === 0) {
-        container.innerHTML = '<p style="grid-column:span2; text-align:center; padding:30px; color:#666;">لا توجد منتجات مطابقة للبحث</p>';
+        container.innerHTML = '<p style="grid-column:span 2; text-align:center; padding:35px 20px; color:var(--brown-mid); font-weight:700; font-size:1.05rem;">لا توجد منتجات مطابقة في هذا القسم</p>';
     } else {
         filtered.forEach(p => container.appendChild(createProductCard(p)));
     }
+}
+
+// ========== فلترة منتجات المتجر ==========
+function filterMarketProducts(query) {
+    applyMarketFilters();
 }
 
 // ========== مسح البحث ==========
@@ -65,7 +186,7 @@ function clearSearch() {
     if (input) input.value = '';
     const clear = document.getElementById('clearSearch');
     if (clear) clear.style.display = 'none';
-    filterMarketProducts('');
+    applyMarketFilters();
 }
 
 // ========== عرض تقييم المنتج (النجوم + العدد) ==========
@@ -1817,4 +1938,9 @@ window.forceDeleteProductAdmin = forceDeleteProductAdmin;
 window.loadProductsTableAdmin = loadProductsTableAdmin;
 window.renderProductsTableAdmin = renderProductsTableAdmin;
 window.filterProductsAdminData = filterProductsAdminData;
+window.openCategory = openCategory;
+window.loadCategoryProducts = loadCategoryProducts;
+window.getCategoryNameByKey = getCategoryNameByKey;
+window.filterMarketByCategory = filterMarketByCategory;
+window.applyMarketFilters = applyMarketFilters;
 window.productsAdminFilter = productsAdminFilter;

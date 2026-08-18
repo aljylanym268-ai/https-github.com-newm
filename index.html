@@ -249,10 +249,12 @@
         <div class="categories-section">
             <div class="section-title">الأقسام الرئيسية</div>
             <div class="categories-grid">
-                <a href="#" class="category-card" onclick="showScreen('electronicsScreen')"><div class="category-icon"><i class="fas fa-laptop"></i></div><div class="category-title">إلكترونيات</div><div class="category-desc">هواتف، لابتوبات، أجهزة</div></a>
-                <a href="#" class="category-card" onclick="showScreen('fashionScreen')"><div class="category-icon"><i class="fas fa-tshirt"></i></div><div class="category-title">أزياء</div><div class="category-desc">ملابس، أحذية، إكسسوارات</div></a>
-                <a href="#" class="category-card" onclick="showScreen('homeScreen')"><div class="category-icon"><i class="fas fa-home"></i></div><div class="category-title">منزل</div><div class="category-desc">أثاث، ديكور، مطبخ</div></a>
-                <a href="#" class="category-card" onclick="showScreen('foodScreen')"><div class="category-icon"><i class="fas fa-utensils"></i></div><div class="category-title">أطعمة</div><div class="category-desc">حلويات، مشروبات، أطعمة</div></a>
+                <div class="category-card" onclick="openCategory('electronics', 'إلكترونيات وأجهزة')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-laptop"></i></div><div class="category-title">إلكترونيات</div><div class="category-desc">هواتف، لابتوبات، أجهزة</div></div>
+                <div class="category-card" onclick="openCategory('fashion', 'أزياء وموضة')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-tshirt"></i></div><div class="category-title">أزياء</div><div class="category-desc">ملابس، أحذية، إكسسوارات</div></div>
+                <div class="category-card" onclick="openCategory('home', 'منزل وديكور')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-couch"></i></div><div class="category-title">منزل</div><div class="category-desc">أثاث، ديكور، مطبخ</div></div>
+                <div class="category-card" onclick="openCategory('food', 'أطعمة ومأكولات')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-utensils"></i></div><div class="category-title">أطعمة</div><div class="category-desc">حلويات، وجبات، مشروبات</div></div>
+                <div class="category-card" onclick="openCategory('beauty', 'جمال وعناية')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-spa"></i></div><div class="category-title">جمال وعناية</div><div class="category-desc">عطور، عناية، تجميل</div></div>
+                <div class="category-card" onclick="openCategory('sports', 'رياضة ولياقة')" style="cursor:pointer;"><div class="category-icon"><i class="fas fa-dumbbell"></i></div><div class="category-title">رياضة</div><div class="category-desc">معدات، ملابس رياضية</div></div>
             </div>
         </div>
         <div class="products-section">
@@ -269,14 +271,26 @@
                 <div class="header-search">
                     <div class="search-container">
                         <i class="fas fa-search"></i>
-                        <input type="text" id="marketSearchInput" placeholder="ابحث في Misar Systems...">
+                        <input type="text" id="marketSearchInput" placeholder="ابحث في Misar Systems..." oninput="applyMarketFilters()">
                         <span class="clear-search" id="clearSearch" onclick="clearSearch()"><i class="fas fa-times-circle"></i></span>
                     </div>
                 </div>
-                <div class="header-actions"></div>
+                <div class="header-actions">
+                    <button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button>
+                </div>
             </div>
         </div>
-        <div class="products-section" style="padding-top:20px;">
+        <!-- تصنيفات المتجر السريعة -->
+        <div class="market-categories-bar" style="display:flex; gap:8px; overflow-x:auto; padding:12px 5% 4px; scrollbar-width:none; -webkit-overflow-scrolling:touch;">
+            <button class="filter-chip active" onclick="filterMarketByCategory('all', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--blue-royal); color:var(--gold); font-weight:700; cursor:pointer;">الكل</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('electronics', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">💻 إلكترونيات</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('fashion', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">👔 أزياء</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('home', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">🏠 منزل</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('food', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">🍔 أطعمة</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('beauty', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">✨ جمال</button>
+            <button class="filter-chip" onclick="filterMarketByCategory('sports', this)" style="white-space:nowrap; padding:6px 16px; border-radius:20px; border:1px solid var(--gold); background:var(--sand); color:var(--brown-dark); font-weight:700; cursor:pointer;">⚽ رياضة</button>
+        </div>
+        <div class="products-section" style="padding-top:10px;">
             <div class="products-grid" id="marketProducts"></div>
         </div>
     </div>
@@ -856,18 +870,77 @@
         </div> <!-- end founder-tab-content -->
     </div> <!-- end founderDashboardScreen -->
 
-<!-- ========== شاشات أخرى ========== -->
+<!-- ========== شاشات الأقسام الرئيسية ========== -->
+    <div class="screen hidden" id="categoryProductsScreen">
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button>
+                    <img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy">
+                    <div class="header-title" id="categoryScreenTitle">القسم</div>
+                </div>
+                <div class="header-actions">
+                    <button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button>
+                </div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;">
+            <div class="products-grid" id="categoryProductsGrid"></div>
+        </div>
+    </div>
     <div class="screen hidden" id="electronicsScreen">
-        <div class="app-header"><div class="header-content"><div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><div class="header-title">إلكترونيات</div></div></div></div>
-        <div class="products-section"><div class="products-grid" id="electronicsProducts"></div></div>
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">إلكترونيات وأجهزة</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="electronicsProducts"></div></div>
     </div>
     <div class="screen hidden" id="fashionScreen">
-        <div class="app-header"><div class="header-content"><div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><div class="header-title">أزياء</div></div></div></div>
-        <div class="products-section"><div class="products-grid" id="fashionProducts"></div></div>
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">أزياء وموضة</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="fashionProducts"></div></div>
+    </div>
+    <div class="screen hidden" id="homeGoodsScreen">
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">منزل وديكور</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="homeProducts"></div></div>
     </div>
     <div class="screen hidden" id="foodScreen">
-        <div class="app-header"><div class="header-content"><div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><div class="header-title">أطعمة</div></div></div></div>
-        <div class="products-section"><div class="products-grid" id="foodProducts"></div></div>
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">أطعمة ومأكولات</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="foodProducts"></div></div>
+    </div>
+    <div class="screen hidden" id="beautyScreen">
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">جمال وعناية</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="beautyProducts"></div></div>
+    </div>
+    <div class="screen hidden" id="sportsScreen">
+        <div class="app-header home-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="app-logo" loading="lazy"><div class="header-title">رياضة ولياقة</div></div>
+                <div class="header-actions"><button class="header-icon" onclick="showScreen('cartScreen')"><i class="fas fa-shopping-cart"></i></button></div>
+            </div>
+        </div>
+        <div class="products-section" style="padding-top:20px;"><div class="products-grid" id="sportsProducts"></div></div>
     </div>
 
     <!-- ========== مودالات عامة ========== -->

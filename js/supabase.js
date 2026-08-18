@@ -1518,6 +1518,24 @@ function showScreen(screenId) {
         if (clearSearch) clearSearch.style.display = 'none';
         if (typeof loadMarketProducts === 'function') loadMarketProducts();
     }
+    if (screenId === 'electronicsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('electronics', 'electronicsProducts', 'إلكترونيات وأجهزة');
+    }
+    if (screenId === 'fashionScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('fashion', 'fashionProducts', 'أزياء وموضة');
+    }
+    if (screenId === 'homeGoodsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('home', 'homeProducts', 'منزل وديكور');
+    }
+    if (screenId === 'foodScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('food', 'foodProducts', 'أطعمة ومأكولات');
+    }
+    if (screenId === 'beautyScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('beauty', 'beautyProducts', 'جمال وعناية');
+    }
+    if (screenId === 'sportsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('sports', 'sportsProducts', 'رياضة ولياقة');
+    }
     if (screenId === 'profileScreen') {
         updateProfileLocation();
         // تحديث عداد عدد الطلبات في بطاقة "طلبات" بالملف الشخصي
