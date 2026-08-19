@@ -45,7 +45,7 @@
                 <div class="total-amount" id="cartTotal" style="font-size:1.8rem;">0 ج.م</div>
             </div>
             <button class="checkout-btn" onclick="openCheckout()">
-                <i class="fas fa-shopping-bag"></i> 
+                <i class="fas fa-shopping-bag"></i>
                 إتمام الشراء (<span id="checkoutSelectedCount">0</span> منتج)
             </button>
         </div>
@@ -60,6 +60,7 @@
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>
 <script src="js/cart.js"></script>
+<script src="js/returns.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', async () => {
         const { data: { session } } = await supabaseClient.auth.getSession();

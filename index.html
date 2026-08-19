@@ -1000,6 +1000,49 @@
         </div>
     </div>
 
+    <!-- ====== مودال طلب استرجاع ====== -->
+    <div id="returnModal" class="modal" onclick="if(event.target===this) closeReturnModal()">
+      <div class="modal-content">
+        <h3 style="color:#1a237e; margin-bottom:15px;"><i class="fas fa-undo-alt"></i> طلب استرجاع</h3>
+        <input type="hidden" id="returnOrderId">
+        <input type="hidden" id="returnProductId">
+
+        <p><strong>المنتج:</strong> <span id="returnProductName"></span></p>
+        <div class="input-group">
+          <label class="input-label">الكمية المراد استرجاعها</label>
+          <input type="number" id="returnQuantity" class="input-field" min="1" value="1">
+          <small>الكمية المتاحة: <span id="returnMaxQuantity">1</span></small>
+        </div>
+        <div class="input-group">
+          <label class="input-label">سبب الاسترجاع</label>
+          <select id="returnReason" class="input-field">
+            <option value="المنتج تالف">المنتج تالف</option>
+            <option value="المنتج غير مطابق للوصف">المنتج غير مطابق للوصف</option>
+            <option value="تم إرسال منتج خاطئ">تم إرسال منتج خاطئ</option>
+            <option value="المنتج ناقص/به جزء مفقود">المنتج ناقص/به جزء مفقود</option>
+            <option value="سبب آخر">سبب آخر</option>
+          </select>
+        </div>
+        <div class="input-group" id="otherReasonGroup" style="display:none;">
+          <label class="input-label">تفاصيل السبب</label>
+          <textarea id="returnOtherReason" class="input-field" rows="2" placeholder="اكتب التفاصيل..."></textarea>
+        </div>
+        <div class="input-group">
+          <label class="input-label">ملاحظات إضافية (اختياري)</label>
+          <textarea id="returnNotes" class="input-field" rows="2" placeholder="أي ملاحظات..."></textarea>
+        </div>
+        <div style="background:#f5f0ea; padding:12px; border-radius:12px; margin:10px 0;">
+          <span style="font-weight:700;">رسوم خدمة الاسترجاع:</span>
+          <span id="returnFeeDisplay" style="font-weight:900; color:#1a237e;">20 ج.م</span>
+          <p style="font-size:0.8rem; color:#666;">(يتم خصمها من حسابك عند تنفيذ الطلب)</p>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button class="login-btn" style="flex:1;" onclick="confirmReturn()"><i class="fas fa-check"></i> تأكيد الطلب</button>
+          <button class="google-btn" style="flex:1;" onclick="closeReturnModal()">إلغاء</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ========== مودالات لوحة المؤسس ========== -->
     <div id="confirmModal" class="modal" onclick="if(event.target===this) closeConfirmModal()">
         <div class="modal-content" style="max-width:400px;">
@@ -1163,6 +1206,7 @@
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>
 <script src="js/cart.js"></script>
+<script src="js/returns.js"></script>
 <script>
     // ======== التهيئة العامة ========
     document.addEventListener('DOMContentLoaded', async function() {
@@ -1391,6 +1435,8 @@ if (session) {
         });
 
         // حفظ الموقع
+
+        
         document.getElementById('saveLocationBtn')?.addEventListener('click', saveLocation);
 
         // تحديث القرى عند تغيير المركز

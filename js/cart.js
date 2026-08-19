@@ -373,16 +373,16 @@ async function cancelOrder(orderId) {
 // ========== حذف طلب من قائمة الطلبات ==========
 function deleteBuyerOrder(orderId) {
     if (!confirm('هل أنت متأكد من حذف هذا الطلب من القائمة؟')) return;
-    
+
     // إزالة الطلب من المصفوفة المحلية
     if (appState.buyerOrders) {
         appState.buyerOrders = appState.buyerOrders.filter(o => o.id !== orderId);
     }
-    
+
     // إعادة عرض الطلبات المفلترة
     renderFilteredOrders();
     showToast('تم حذف الطلب من القائمة', 'success');
-    
+
     // إذا لم يعد هناك طلبات، عرض رسالة "لا توجد طلبات"
     if (!appState.buyerOrders || appState.buyerOrders.length === 0) {
         const container = document.getElementById('buyerOrdersList');
@@ -438,11 +438,11 @@ function filterBuyerOrders() {
     const searchInput = document.getElementById('ordersSearchInput');
     const clearBtn = document.getElementById('ordersClearSearch');
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-    
+
     if (clearBtn) {
         clearBtn.style.display = query ? 'block' : 'none';
     }
-    
+
     appState.ordersFilter.query = query;
     renderFilteredOrders();
 }
@@ -450,13 +450,13 @@ function filterBuyerOrders() {
 // ========== تعيين فلتر الحالة ==========
 function setOrdersFilter(status, btnElement) {
     appState.ordersFilter.status = status;
-    
+
     // تحديث حالة الأزرار
     document.querySelectorAll('#ordersFilterButtons .filter-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     if (btnElement) btnElement.classList.add('active');
-    
+
     renderFilteredOrders();
 }
 
@@ -465,15 +465,15 @@ function renderFilteredOrders() {
     const container = document.getElementById('buyerOrdersList');
     const emptyMsg = document.getElementById('ordersEmptyMessage');
     if (!container) return;
-    
+
     const { status, query } = appState.ordersFilter;
-    
+
     // تصفية حسب الحالة
     let filtered = appState.buyerOrders || [];
     if (status !== 'all') {
         filtered = filtered.filter(o => o.status === status);
     }
-    
+
     // تصفية حسب نص البحث (رقم الطلب أو اسم المنتج)
     if (query) {
         filtered = filtered.filter(o => {
@@ -482,15 +482,15 @@ function renderFilteredOrders() {
             return orderId.includes(query) || productName.includes(query);
         });
     }
-    
+
     if (filtered.length === 0) {
         container.innerHTML = '';
         if (emptyMsg) emptyMsg.style.display = 'block';
         return;
     }
-    
+
     if (emptyMsg) emptyMsg.style.display = 'none';
-    
+
     // عرض الطلبات المفلترة
     container.innerHTML = '';
     filtered.forEach(order => {
@@ -504,7 +504,33 @@ function createBuyerOrderCard(order) {
     card.className = 'order-card';
     const product = order.products || {};
     const timeline = generateTimeline(order.status);
-    
+
+    let returnHtml = '';
+    if (order.status === 'delivered' && order.delivered_at) {
+        const remaining = getReturnTimeRemaining(order);
+        if (remaining) {
+            returnHtml = `
+      <div style="margin-top:10px; padding:10px; background:#e8f5e9; border-radius:10px; border:1px solid #4caf50;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <span><i class="fas fa-clock" style="color:#2e7d32;"></i> <strong>متاح للاسترجاع</strong></span>
+          <span style="font-weight:900; color:#1a237e; font-size:1.1rem;" id="timer_${order.id}">${remaining}</span>
+        </div>
+        <button class="add-to-cart" onclick="openReturnModal('${order.id}')" style="margin-top:8px; background:#ff9800; color:#fff; border:none; padding:8px 16px; border-radius:30px; font-weight:700; cursor:pointer;">
+          <i class="fas fa-undo-alt"></i> طلب استرجاع
+        </button>
+      </div>
+    `;
+            // بدء تحديث العداد كل ثانية
+            startReturnTimer(order.id, order.delivered_at);
+        } else {
+            returnHtml = `
+      <div style="margin-top:10px; padding:10px; background:#ffebee; border-radius:10px; border:1px solid #ef5350;">
+        <span style="color:#c62828;"><i class="fas fa-times-circle"></i> انتهت مدة الاسترجاع لهذا الطلب</span>
+      </div>
+    `;
+        }
+    }
+
     let deliveryHtml = '';
     if (order.delivery) {
         const img = order.delivery.image_url ? `<img src="${order.delivery.image_url}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-user" style="font-size:1.2rem;"></i>';
@@ -515,7 +541,7 @@ function createBuyerOrderCard(order) {
             <a href="https://wa.me/${order.delivery.phone || ''}" target="_blank" style="color:#25D366;"><i class="fab fa-whatsapp"></i></a>
         </div>`;
     }
-    
+
     let otpDisplay = '';
     if (order.status === 'in_delivery' && order.otp_code) {
         otpDisplay = `<div style="margin-top:10px;padding:12px;background:#fff3cd;border-radius:8px;border:2px solid #ffc107;text-align:center;font-weight:bold;">
@@ -524,7 +550,7 @@ function createBuyerOrderCard(order) {
             <div style="font-size:0.8rem;margin-top:4px;">أعط هذا الرمز للمندوب عند استلام الطلب</div>
         </div>`;
     }
-    
+
     // عرض أزرار الإجراءات حسب حالة الطلب
     let actionsHtml = '';
     if (order.status === 'pending') {
@@ -537,14 +563,15 @@ function createBuyerOrderCard(order) {
             <button class="remove-btn" style="display:inline-flex;align-items:center;gap:5px;width:auto;" onclick="deleteBuyerOrder('${order.id}')"><i class="fas fa-trash"></i> حذف</button>
         </div>`;
     }
-    
+
     card.innerHTML = `<div class="order-header"><span class="order-id">#${order.id.slice(0,8)}</span><span class="order-status ${order.status}">${getStatusText(order.status)}</span></div>
         <div>${escapeHTML(product.name)} - ${order.quantity} × ${((order.total_price - (order.delivery_fee || 0)) / order.quantity).toFixed(0)} ج.م</div>
         <div>رسوم التوصيل: ${order.delivery_fee || 0} ج.م</div>
         <div class="order-timeline" style="margin-top:15px;">${timeline}</div>
+        ${returnHtml}
         ${otpDisplay}${deliveryHtml}
         ${actionsHtml}`;
-    
+
     return card;
 }
 
@@ -552,24 +579,24 @@ async function loadBuyerOrdersWithTimeline() {
     const orders = await loadBuyerOrders();
     const container = document.getElementById('buyerOrdersList');
     if (!container) return;
-    
+
     // تخزين الطلبات في الحالة العامة للتصفية
     appState.buyerOrders = orders;
 
     // تحديث عداد عدد الطلبات في بطاقة "طلبات" بالملف الشخصي
     const profileOrdersCountEl = document.getElementById('profileOrdersCount');
     if (profileOrdersCountEl) profileOrdersCountEl.textContent = orders.length;
-    
+
     if (orders.length === 0) {
         container.innerHTML = '<p style="text-align:center; padding:30px;">لا توجد طلبات</p>';
         const emptyMsg = document.getElementById('ordersEmptyMessage');
         if (emptyMsg) emptyMsg.style.display = 'none';
         return;
     }
-    
+
     // عرض مع تطبيق التصفية الحالية
     renderFilteredOrders();
-    
+
     // ملاحظة: تم نقل الكود الأصلي لإنشاء البطاقات إلى createBuyerOrderCard
 }
 
@@ -1030,9 +1057,9 @@ function createOrderCardForDelivery(order, isAvailable) {
             const inputId = `otpInput_${order.id}`;
             statusActions = `
                 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
-                    <input type="text" id="${inputId}" 
+                    <input type="text" id="${inputId}"
                            style="flex:1;min-width:120px;padding:10px 14px;
-                                  color:#000000 !important; 
+                                  color:#000000 !important;
                                   background:#ffffff !important;
                                   border:2px solid #1a237e !important;
                                   border-radius:8px !important;
@@ -1043,12 +1070,12 @@ function createOrderCardForDelivery(order, isAvailable) {
                                   pointer-events:auto !important;
                                   opacity:1 !important;
                                   box-shadow:inset 0 2px 4px rgba(0,0,0,0.1);"
-                           placeholder="أدخل الرمز (6 أرقام)" 
-                           maxlength="6" 
-                           inputmode="numeric" 
+                           placeholder="أدخل الرمز (6 أرقام)"
+                           maxlength="6"
+                           inputmode="numeric"
                            autocomplete="off"
                            autofocus>
-                    <button class="add-to-cart" style="background:#4caf50;white-space:nowrap;" 
+                    <button class="add-to-cart" style="background:#4caf50;white-space:nowrap;"
                             onclick="completeDelivery('${order.id}', document.getElementById('${inputId}').value)">
                         <i class="fas fa-check-circle"></i> تأكيد التوصيل
                     </button>
@@ -1110,6 +1137,157 @@ window.claimOrder = claimOrder;
 window.rejectOrderByDelivery = rejectOrderByDelivery;
 window.pickupFromSeller = pickupFromSeller;
 window.startDelivery = startDelivery;
+// ===================== دوال المؤقت العد التنازلي والاسترجاع =====================
+const returnTimers = {};
+
+function startReturnTimer(orderId, deliveredAt) {
+  if (returnTimers[orderId]) clearInterval(returnTimers[orderId]);
+
+  returnTimers[orderId] = setInterval(() => {
+    const order = appState.buyerOrders?.find(o => o.id === orderId);
+    if (!order || order.status !== 'delivered') {
+      clearInterval(returnTimers[orderId]);
+      delete returnTimers[orderId];
+      return;
+    }
+    const remaining = getReturnTimeRemaining(order);
+    const timerEl = document.getElementById(`timer_${orderId}`);
+    if (timerEl) {
+      if (remaining) {
+        timerEl.textContent = remaining;
+      } else {
+        timerEl.textContent = 'انتهت';
+        clearInterval(returnTimers[orderId]);
+        delete returnTimers[orderId];
+        // تحديث البطاقة لإخفاء الزر
+        // يمكن إعادة تحميل الطلبات أو تحديث الـ DOM
+        loadBuyerOrdersWithTimeline();
+      }
+    }
+  }, 1000);
+}
+
+// دالة فتح مودال إنشاء طلب استرجاع
+function openReturnModal(orderId) {
+  // ابحث عن الطلب
+  const order = appState.buyerOrders?.find(o => o.id === orderId);
+  if (!order) {
+    showToast('الطلب غير موجود', 'error');
+    return;
+  }
+
+  // تعبئة المودال
+  const orderIdEl = document.getElementById('returnOrderId');
+  if (orderIdEl) orderIdEl.value = orderId;
+  const prodIdEl = document.getElementById('returnProductId');
+  if (prodIdEl) prodIdEl.value = order.product_id;
+
+  // عرض اسم المنتج
+  const product = appState.products?.find(p => p.id === order.product_id) || order.products;
+  const prodNameEl = document.getElementById('returnProductName');
+  if (prodNameEl) prodNameEl.textContent = product?.name || 'غير معروف';
+
+  const maxQtyEl = document.getElementById('returnMaxQuantity');
+  if (maxQtyEl) {
+    if ('value' in maxQtyEl) maxQtyEl.value = order.quantity;
+    maxQtyEl.textContent = order.quantity;
+  }
+
+  const qtyInput = document.getElementById('returnQuantity');
+  if (qtyInput) {
+    qtyInput.value = 1;
+    qtyInput.max = order.quantity;
+  }
+
+  const reasonEl = document.getElementById('returnReason');
+  if (reasonEl) reasonEl.selectedIndex = 0;
+  const otherGroup = document.getElementById('otherReasonGroup');
+  if (otherGroup) otherGroup.style.display = 'none';
+  const otherReasonEl = document.getElementById('returnOtherReason');
+  if (otherReasonEl) otherReasonEl.value = '';
+  const notesEl = document.getElementById('returnNotes');
+  if (notesEl) notesEl.value = '';
+
+  // عرض رسوم الاسترجاع (جلبها من الإعدادات أو استخدام قيمة افتراضية)
+  // يمكن جلبها عبر RPC أو من app_settings
+  const fee = 20; // مؤقتاً
+  const feeEl = document.getElementById('returnFeeDisplay');
+  if (feeEl) feeEl.textContent = fee + ' ج.م';
+
+  // عرض المودال
+  const modal = document.getElementById('returnModal');
+  if (modal) modal.classList.add('active');
+}
+
+// إظهار/إخفاء حقل السبب الآخر
+document.addEventListener('DOMContentLoaded', function() {
+  const reasonSelect = document.getElementById('returnReason');
+  const otherGroup = document.getElementById('otherReasonGroup');
+  if (reasonSelect && otherGroup) {
+    reasonSelect.addEventListener('change', function() {
+      otherGroup.style.display = this.value === 'سبب آخر' ? 'block' : 'none';
+    });
+  }
+});
+
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.id === 'returnReason') {
+    const otherGroup = document.getElementById('otherReasonGroup');
+    if (otherGroup) {
+      otherGroup.style.display = e.target.value === 'سبب آخر' ? 'block' : 'none';
+    }
+  }
+});
+
+function closeReturnModal() {
+  const modal = document.getElementById('returnModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function confirmReturn() {
+  const orderId = document.getElementById('returnOrderId')?.value;
+  const productId = document.getElementById('returnProductId')?.value;
+  const quantity = parseInt(document.getElementById('returnQuantity')?.value || '1', 10);
+  const reason = document.getElementById('returnReason')?.value;
+  const otherReason = document.getElementById('returnOtherReason')?.value?.trim() || '';
+  const notes = document.getElementById('returnNotes')?.value?.trim() || '';
+
+  if (!orderId || !productId || !quantity || quantity < 1) {
+    showToast('يرجى إدخال كمية صحيحة', 'warning');
+    return;
+  }
+
+  const finalReason = reason === 'سبب آخر' ? otherReason : reason;
+  if (!finalReason) {
+    showToast('يرجى كتابة سبب الاسترجاع', 'warning');
+    return;
+  }
+
+  // التحقق من الكمية
+  const order = appState.buyerOrders?.find(o => o.id === orderId);
+  if (!order) {
+    showToast('الطلب غير موجود', 'error');
+    return;
+  }
+  if (quantity > order.quantity) {
+    showToast('الكمية المطلوبة تتجاوز الكمية المشتراة', 'error');
+    return;
+  }
+
+  showLoading(true);
+  try {
+    const returnId = await createReturn(orderId, productId, quantity, finalReason, notes);
+    if (returnId) {
+      closeReturnModal();
+      await loadBuyerOrdersWithTimeline(); // تحديث القائمة
+    }
+  } catch (err) {
+    showToast(err.message || 'فشل إنشاء طلب الاسترجاع', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
 window.completeDelivery = completeDelivery;
 window.refreshDeliveryDashboard = refreshDeliveryDashboard;
 window.displayAvailableOrders = displayAvailableOrders;
@@ -1121,3 +1299,8 @@ window.setOrdersFilter = setOrdersFilter;
 window.renderFilteredOrders = renderFilteredOrders;
 window.createBuyerOrderCard = createBuyerOrderCard;
 window.deleteBuyerOrder = deleteBuyerOrder;
+window.startReturnTimer = startReturnTimer;
+window.openReturnModal = openReturnModal;
+window.closeReturnModal = closeReturnModal;
+window.confirmReturn = confirmReturn;
+window.returnTimers = returnTimers;
