@@ -4453,3 +4453,239 @@ body {
         margin-bottom: 18px;
     }
 }
+
+/* ===== تنسيقات بطاقات المرتجعات ===== */
+.return-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+    border: 1px solid rgba(212,175,55,0.25);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.return-card:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+}
+.return-card.founder-return-card {
+    border-right: 4px solid var(--gold);
+}
+.return-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+}
+.return-id {
+    font-weight: 800;
+    color: var(--blue-royal);
+    font-size: 0.95rem;
+}
+.return-status {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.return-status.pending { background: #fff3cd; color: #856404; }
+.return-status.approved { background: #d4edda; color: #155724; }
+.return-status.rejected { background: #f8d7da; color: #721c24; }
+.return-status.assigned { background: #cce5ff; color: #004085; }
+.return-status.completed { background: #d1e7dd; color: #0f5132; }
+.return-status.cancelled { background: #e2e3e5; color: #41464b; }
+.return-product-info {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    line-height: 1.7;
+    font-size: 0.9rem;
+}
+.return-product-image {
+    width: 70px;
+    height: 70px;
+    border-radius: 12px;
+    background: #f5f5f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid #eee;
+}
+.return-product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.return-images-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed #eee;
+}
+.return-images-preview img {
+    width: 55px;
+    height: 55px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.return-images-preview img:hover {
+    transform: scale(1.05);
+}
+.return-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+.return-approve-btn,
+.return-reject-btn {
+    flex: 1;
+    padding: 9px 14px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: 0.2s;
+}
+.return-approve-btn {
+    background: #2e7d32;
+    color: #fff;
+}
+.return-approve-btn:hover {
+    background: #1b5e20;
+}
+.return-reject-btn {
+    background: #d32f2f;
+    color: #fff;
+}
+.return-reject-btn:hover {
+    background: #b71c1c;
+}
+/* ====== بطاقات المرتجعات ====== */
+.return-card {
+  background: var(--sand);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  margin-bottom: 14px;
+  border: var(--border-gold);
+  box-shadow: var(--shadow-card);
+  transition: var(--transition);
+}
+.return-card:hover {
+  box-shadow: 0 8px 25px rgba(212,175,55,0.15);
+}
+.return-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.return-id {
+  font-weight: 900;
+  color: var(--brown-dark);
+}
+.return-status {
+  padding: 3px 14px;
+  border-radius: 30px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.return-status.pending { background: #ff9800; color: #fff; }
+.return-status.approved { background: #4caf50; color: #fff; }
+.return-status.rejected { background: #f44336; color: #fff; }
+.return-status.assigned { background: #2196f3; color: #fff; }
+.return-status.picked_up_from_customer { background: #9c27b0; color: #fff; }
+.return-status.delivered_to_seller { background: #00bcd4; color: #fff; }
+.return-status.completed { background: #2e7d32; color: #fff; }
+.return-status.cancelled { background: #757575; color: #fff; }
+.return-status.failed { background: #b71c1c; color: #fff; }
+
+.return-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.return-product-info {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.return-product-image {
+  width: 70px;
+  height: 70px;
+  border-radius: 12px;
+  background: var(--sand-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.return-product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.return-images-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+.return-images-preview img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+}
+.return-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.return-approve-btn {
+  padding: 8px 18px;
+  background: #4caf50;
+  color: #fff;
+  border: none;
+  border-radius: 30px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.return-approve-btn:hover { opacity: 0.85; }
+.return-reject-btn {
+  padding: 8px 18px;
+  background: #f44336;
+  color: #fff;
+  border: none;
+  border-radius: 30px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.return-reject-btn:hover { opacity: 0.85; }
+
+.founder-return-card {
+  border-color: var(--gold);
+}

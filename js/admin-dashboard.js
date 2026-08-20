@@ -112,7 +112,7 @@ async function refreshFounderDashboard() {
     }
 }
 
-window.switchFounderTab = function(tabId) {
+window.switchFounderTab = function (tabId) {
     document.querySelectorAll('.founder-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelector(`.founder-tab[data-tab="${tabId}"]`).classList.add('active');
     document.querySelectorAll('.founder-tab-panel').forEach(panel => panel.classList.remove('active'));
@@ -130,6 +130,7 @@ window.switchFounderTab = function(tabId) {
         case 'logs': loadLogsTable(); break;
         case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
         case 'settings': loadSettingsForm(); break;
+        case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
     }
 };
 

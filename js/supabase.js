@@ -1303,17 +1303,23 @@ function closeFounderProfile() {
     if (founderScreen) founderScreen.classList.remove('active');
     openChatbot();
 }
-function openImageModal() {
-    const img = document.querySelector('.founder-avatar img');
-    if (!img) return;
-    const modalImage = document.getElementById('modalImage');
-    const imageModal = document.getElementById('imageModal');
-    if (modalImage) modalImage.src = img.src;
+function openImageModal(imageSrc) {
+    let src = typeof imageSrc === 'string' ? imageSrc : null;
+    if (!src) {
+        const img = document.querySelector('.founder-avatar img');
+        if (img) src = img.src;
+    }
+    if (!src) return;
+    const modalImage = document.getElementById('founderModalImage') || document.getElementById('modalImage');
+    const imageModal = document.getElementById('founderImageModal') || document.getElementById('imageModal');
+    if (modalImage) modalImage.src = src;
     if (imageModal) imageModal.classList.add('active');
 }
 function closeImageModal(event) {
-    if (event.target === document.getElementById('imageModal') || event.target.classList.contains('close-modal')) {
-        document.getElementById('imageModal').classList.remove('active');
+    const modal = document.getElementById('founderImageModal') || document.getElementById('imageModal');
+    if (!modal) return;
+    if (!event || event.target === modal || event.target.classList.contains('close-modal')) {
+        modal.classList.remove('active');
     }
 }
 function contactDeveloper() {

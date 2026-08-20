@@ -343,6 +343,27 @@ async function loadBuyerOrders() {
         const { data: orders, error } = await supabaseClient.from('orders').select('*').eq('buyer_id', appState.user.id).order('created_at', { ascending: false });
         if (error) throw error;
         if (!orders.length) return orders;
+
+        // جلب طلبات الاسترجاع الخاصة بالمشتري وربطها بالطلبات
+        try {
+            const { data: returnsData } = await supabaseClient.from('returns').select('*').eq('buyer_id', appState.user.id);
+            if (returnsData && returnsData.length) {
+                const returnMap = new Map();
+                returnsData.forEach(r => {
+                    if (!returnMap.has(r.order_id) || new Date(r.requested_at) > new Date(returnMap.get(r.order_id).requested_at)) {
+                        returnMap.set(r.order_id, r);
+                    }
+                });
+                orders.forEach(order => {
+                    if (returnMap.has(order.id)) {
+                        order.return_request = returnMap.get(order.id);
+                    }
+                });
+            }
+        } catch (retErr) {
+            console.warn('تحذير أثناء جلب المرتجعات:', retErr);
+        }
+
         const productIds = [...new Set(orders.map(o => o.product_id).filter(id => id))];
         if (productIds.length) {
             const { data: products, error: prodError } = await supabaseClient.from('products').select('id, name, image_url').in('id', productIds);
@@ -506,7 +527,79 @@ function createBuyerOrderCard(order) {
     const timeline = generateTimeline(order.status);
 
     let returnHtml = '';
-    if (order.status === 'delivered' && order.delivered_at) {
+    if (order.return_request) {
+        const ret = order.return_request;
+        const status = ret.status;
+        if (status === 'pending') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#fff8e1; border-radius:10px; border:1px solid #ffe082;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:bold; color:#b78103;"><i class="fas fa-hourglass-half"></i> تم إرسال طلب الاسترجاع</span>
+          <span style="font-size:0.8rem; background:#fff3e0; padding:3px 10px; border-radius:12px; color:#e65100; font-weight:bold;">قيد المراجعة</span>
+        </div>
+        <div style="font-size:0.9rem; color:#5d4037; margin-top:6px; font-weight:500;">
+          ⏳ سيتم الاسترجاع في أقرب وقت والتواصل معك لاستلام المنتج.
+        </div>
+        ${ret.return_reason ? `<div style="font-size:0.82rem; color:#8d6e63; margin-top:4px;"><strong>سبب الاسترجاع:</strong> ${escapeHTML(ret.return_reason)}</div>` : ''}
+      </div>
+    `;
+        } else if (status === 'approved') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#e8f5e9; border-radius:10px; border:1px solid #81c784;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:bold; color:#2e7d32;"><i class="fas fa-check-circle"></i> تم قبول طلب الاسترجاع</span>
+          <span style="font-size:0.8rem; background:#c8e6c9; padding:3px 10px; border-radius:12px; color:#1b5e20; font-weight:bold;">تم القبول</span>
+        </div>
+        <div style="font-size:0.9rem; color:#2e7d32; margin-top:6px; font-weight:500;">
+          ✅ وافق البائع على طلب الاسترجاع، وسيتم إسناد مندوب لاستلام المنتج منك في أقرب وقت.
+        </div>
+      </div>
+    `;
+        } else if (status === 'assigned' || status === 'courier_on_way_to_customer') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#e3f2fd; border-radius:10px; border:1px solid #90caf9;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:#1565c0;">
+          <i class="fas fa-shipping-fast"></i> المندوب في طريقه إليك لاستلام المرتجع
+        </div>
+        <div style="font-size:0.85rem; color:#0d47a1; margin-top:4px;">
+          يرجى تجهيز المنتج مع ملحقاته لتسليمه للمندوب.
+        </div>
+      </div>
+    `;
+        } else if (status === 'picked_up_from_customer' || status === 'courier_on_way_to_seller') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#e8eaf6; border-radius:10px; border:1px solid #9fa8da;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:#283593;">
+          <i class="fas fa-box-check"></i> تم استلام المنتج من المندوب
+        </div>
+        <div style="font-size:0.85rem; color:#3949ab; margin-top:4px;">
+          المنتج في الطريق إلى البائع لإتمام عملية الاسترجاع.
+        </div>
+      </div>
+    `;
+        } else if (status === 'delivered_to_seller' || status === 'completed') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#e8f5e9; border-radius:10px; border:1px solid #a5d6a7;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:#1b5e20;">
+          <i class="fas fa-check-double"></i> تم الاسترجاع بنجاح
+        </div>
+        <div style="font-size:0.85rem; color:#2e7d32; margin-top:4px;">
+          تم استلام المرتجع بواسطة البائع وإتمام العملية بنجاح.
+        </div>
+      </div>
+    `;
+        } else if (status === 'rejected') {
+            returnHtml = `
+      <div style="margin-top:10px; padding:12px; background:#ffebee; border-radius:10px; border:1px solid #ef9a9a;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:bold; color:#c62828;"><i class="fas fa-times-circle"></i> تم رفض طلب الاسترجاع</span>
+          <span style="font-size:0.8rem; background:#ffcdd2; padding:3px 10px; border-radius:12px; color:#b71c1c; font-weight:bold;">مرفوض</span>
+        </div>
+        ${ret.rejection_reason ? `<div style="font-size:0.85rem; color:#b71c1c; margin-top:4px;"><strong>سبب الرفض:</strong> ${escapeHTML(ret.rejection_reason)}</div>` : ''}
+      </div>
+    `;
+        }
+    } else if (order.status === 'delivered' && order.delivered_at) {
         const remaining = getReturnTimeRemaining(order);
         if (remaining) {
             returnHtml = `
@@ -987,10 +1080,16 @@ async function refreshDeliveryDashboard() {
         const [available, my] = await Promise.all([loadAvailableOrders(), loadMyDeliveryOrders()]);
         appState.delivery.availableOrders = available;
         appState.delivery.myOrders = my;
-        document.getElementById('availableOrdersCount').textContent = available.length;
-        document.getElementById('myOrdersCount').textContent = my.length;
+        const availCountEl = document.getElementById('availableOrdersCount');
+        if (availCountEl) availCountEl.textContent = available.length;
+        const myCountEl = document.getElementById('myOrdersCount');
+        if (myCountEl) myCountEl.textContent = my.length;
         displayAvailableOrders(available);
         displayMyDeliveryOrders(my);
+
+        if (typeof displayDeliveryReturns === 'function') {
+            await displayDeliveryReturns();
+        }
     } catch (err) { showToast(err.message, 'error'); }
     finally { showLoading(false); }
 }
@@ -1101,10 +1200,19 @@ function createOrderCardForDelivery(order, isAvailable) {
 function switchDeliveryTab(tab) {
     appState.delivery.currentTab = tab;
     document.querySelectorAll('#deliveryDashboardScreen .seller-tab').forEach((t, i) => {
-        t.classList.toggle('active', (tab === 'available' && i === 0) || (tab === 'my' && i === 1));
+        t.classList.toggle('active', (tab === 'available' && i === 0) || (tab === 'my' && i === 1) || (tab === 'returns' && i === 2));
     });
-    document.getElementById('availableOrdersTab').style.display = tab === 'available' ? 'block' : 'none';
-    document.getElementById('myOrdersTab').style.display = tab === 'my' ? 'block' : 'none';
+    const availTab = document.getElementById('availableOrdersTab');
+    if (availTab) availTab.style.display = tab === 'available' ? 'block' : 'none';
+    const myTab = document.getElementById('myOrdersTab');
+    if (myTab) myTab.style.display = tab === 'my' ? 'block' : 'none';
+    const returnsTab = document.getElementById('deliveryReturnsTab');
+    if (returnsTab) {
+        returnsTab.style.display = tab === 'returns' ? 'block' : 'none';
+        if (tab === 'returns' && typeof displayDeliveryReturns === 'function') {
+            displayDeliveryReturns();
+        }
+    }
 }
 
 // ===================== تصدير الدوال العامة =====================
@@ -1208,6 +1316,12 @@ function openReturnModal(orderId) {
   const notesEl = document.getElementById('returnNotes');
   if (notesEl) notesEl.value = '';
 
+  // مسح معاينة الصور القديمة
+  const previewEl = document.getElementById('returnImagesPreview');
+  if (previewEl) previewEl.innerHTML = '';
+  const fileInput = document.getElementById('returnImages');
+  if (fileInput) fileInput.value = '';
+
   // عرض رسوم الاسترجاع (جلبها من الإعدادات أو استخدام قيمة افتراضية)
   // يمكن جلبها عبر RPC أو من app_settings
   const fee = 20; // مؤقتاً
@@ -1244,6 +1358,29 @@ function closeReturnModal() {
   if (modal) modal.classList.remove('active');
 }
 
+// معاينة صور طلب الاسترجاع
+function previewReturnImages(event) {
+  const container = document.getElementById('returnImagesPreview');
+  if (!container) return;
+  container.innerHTML = '';
+  const files = Array.from(event.target.files || []);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = document.createElement('img');
+      img.src = e.target.result;
+      img.style.width = '60px';
+      img.style.height = '60px';
+      img.style.objectFit = 'cover';
+      img.style.borderRadius = '8px';
+      img.style.margin = '4px';
+      img.style.border = '1px solid #ddd';
+      container.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function confirmReturn() {
   const orderId = document.getElementById('returnOrderId')?.value;
   const productId = document.getElementById('returnProductId')?.value;
@@ -1276,7 +1413,9 @@ async function confirmReturn() {
 
   showLoading(true);
   try {
-    const returnId = await createReturn(orderId, productId, quantity, finalReason, notes);
+    const fileInput = document.getElementById('returnImages');
+    const images = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+    const returnId = await createReturn(orderId, productId, quantity, finalReason, notes, images);
     if (returnId) {
       closeReturnModal();
       await loadBuyerOrdersWithTimeline(); // تحديث القائمة
@@ -1302,5 +1441,6 @@ window.deleteBuyerOrder = deleteBuyerOrder;
 window.startReturnTimer = startReturnTimer;
 window.openReturnModal = openReturnModal;
 window.closeReturnModal = closeReturnModal;
+window.previewReturnImages = previewReturnImages;
 window.confirmReturn = confirmReturn;
 window.returnTimers = returnTimers;

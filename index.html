@@ -460,6 +460,7 @@
             <div class="seller-tab active" onclick="switchSellerTab('products')"><i class="fas fa-box"></i> المنتجات</div>
             <div class="seller-tab" onclick="switchSellerTab('orders')"><i class="fas fa-shopping-cart"></i> الطلبات</div>
             <div class="seller-tab" onclick="switchSellerTab('analytics')"><i class="fas fa-chart-line"></i> الإحصائيات</div>
+            <div class="seller-tab" onclick="switchSellerTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</div>
         </div>
         <div class="seller-content">
             <div id="sellerProductsTab">
@@ -499,6 +500,9 @@
                     <canvas id="salesChart" style="width:100%; height:200px;"></canvas>
                     <button class="login-btn" style="margin-top:15px;" onclick="exportOrdersCSV()"><i class="fas fa-download"></i> تصدير التقرير (CSV)</button>
                 </div>
+            </div>
+            <div id="sellerReturnsTab" style="display:none;">
+                <div id="sellerReturnsList"></div>
             </div>
         </div>
         <div id="productModal" class="modal" onclick="if(event.target===this) closeProductModal()">
@@ -543,14 +547,17 @@
         <div class="delivery-stats">
             <div class="stat-card"><div class="stat-value" id="availableOrdersCount">0</div><div class="stat-label">طلبات متاحة</div></div>
             <div class="stat-card"><div class="stat-value" id="myOrdersCount">0</div><div class="stat-label">طلباتي</div></div>
+            <div class="stat-card"><div class="stat-value" id="deliveryReturnsCount">0</div><div class="stat-label">مهام الاسترجاع</div></div>
         </div>
         <div class="seller-tabs">
             <div class="seller-tab active" onclick="switchDeliveryTab('available')"><i class="fas fa-list"></i> طلبات متاحة</div>
             <div class="seller-tab" onclick="switchDeliveryTab('my')"><i class="fas fa-truck"></i> طلباتي</div>
+            <div class="seller-tab" onclick="switchDeliveryTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</div>
         </div>
         <div class="seller-content">
             <div id="availableOrdersTab"><div class="orders-list" id="availableOrdersList"></div></div>
             <div id="myOrdersTab" style="display:none;"><div class="orders-list" id="myDeliveryOrdersList"></div></div>
+            <div id="deliveryReturnsTab" style="display:none;"><div class="orders-list" id="deliveryReturnsList"></div></div>
         </div>
     </div>
 
@@ -616,6 +623,7 @@
             <button class="founder-tab" data-tab="notifications" onclick="switchFounderTab('notifications')"><i class="fas fa-bell"></i> الإشعارات</button>
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
+            <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
         </div>
 
         <!-- محتوى التبويبات -->
@@ -867,6 +875,11 @@
                 </div>
             </div>
 
+            <!-- تبويب المرتجعات للمؤسس -->
+            <div id="tab-returns" class="founder-tab-panel">
+                <div id="founderReturnsList"></div>
+            </div>
+
         </div> <!-- end founder-tab-content -->
     </div> <!-- end founderDashboardScreen -->
 
@@ -1031,10 +1044,17 @@
           <label class="input-label">ملاحظات إضافية (اختياري)</label>
           <textarea id="returnNotes" class="input-field" rows="2" placeholder="أي ملاحظات..."></textarea>
         </div>
-        <div style="background:#f5f0ea; padding:12px; border-radius:12px; margin:10px 0;">
-          <span style="font-weight:700;">رسوم خدمة الاسترجاع:</span>
-          <span id="returnFeeDisplay" style="font-weight:900; color:#1a237e;">20 ج.م</span>
-          <p style="font-size:0.8rem; color:#666;">(يتم خصمها من حسابك عند تنفيذ الطلب)</p>
+        <div class="input-group">
+          <label class="input-label">صور المنتج (لإثبات المشكلة)</label>
+          <input type="file" id="returnImages" accept="image/*" multiple onchange="previewReturnImages(event)">
+          <div class="return-images-preview" id="returnImagesPreview"></div>
+        </div>
+        <div style="background:#fff3e0; padding:12px; border-radius:12px; margin:12px 0; border:1px solid #ffe082;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:700; color:#b78103;"><i class="fas fa-receipt"></i> رسوم الاسترجاع (يتحملها العميل):</span>
+            <span id="returnFeeDisplay" style="font-weight:900; color:#e65100; font-size:1.15rem;">20 ج.م</span>
+          </div>
+          <p style="font-size:0.8rem; color:#6d4c41; margin:6px 0 0;">⚠️ يتحمل العميل رسوم شحن الاسترجاع (20 ج.م) وتُسدد للمندوب عند استلام المنتج.</p>
         </div>
         <div style="display:flex; gap:10px; margin-top:20px;">
           <button class="login-btn" style="flex:1;" onclick="confirmReturn()"><i class="fas fa-check"></i> تأكيد الطلب</button>
@@ -1175,6 +1195,22 @@
     <div class="image-modal" id="founderImageModal" onclick="closeImageModal(event)">
         <div class="close-modal" onclick="closeImageModal(event)">×</div>
         <div class="modal-content"><img src="" alt="صورة" id="founderModalImage"></div>
+    </div>
+
+    <!-- ====== مودال سبب الرفض ====== -->
+    <div id="rejectReasonModal" class="modal" onclick="if(event.target===this) closeModal('rejectReasonModal')">
+      <div class="modal-content">
+        <h3 style="color:#1a237e; margin-bottom:15px;">سبب الرفض</h3>
+        <input type="hidden" id="rejectReturnId">
+        <div class="input-group">
+          <label class="input-label">سبب الرفض *</label>
+          <textarea id="rejectReasonText" class="input-field" rows="4" placeholder="اكتب سبب رفض طلب الاسترجاع..."></textarea>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button class="login-btn" style="flex:1;" onclick="confirmRejectReturn()"><i class="fas fa-check"></i> تأكيد الرفض</button>
+          <button class="google-btn" style="flex:1;" onclick="closeModal('rejectReasonModal')">إلغاء</button>
+        </div>
+      </div>
     </div>
 
     <!-- ========== التنقل السفلي ========== -->
@@ -1436,7 +1472,7 @@ if (session) {
 
         // حفظ الموقع
 
-        
+
         document.getElementById('saveLocationBtn')?.addEventListener('click', saveLocation);
 
         // تحديث القرى عند تغيير المركز
@@ -1534,6 +1570,7 @@ if (session) {
 case 'logs': if (typeof loadLogsTable === 'function') loadLogsTable(); break;
             case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
             case 'settings': if (typeof loadSettingsForm === 'function') loadSettingsForm(); break;
+            case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
         }
     };
 

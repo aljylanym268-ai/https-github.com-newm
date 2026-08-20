@@ -362,13 +362,21 @@ function filterSellerOrders() { displaySellerOrders(document.getElementById('sel
 document.querySelectorAll('#sellerOrdersTab .filter-btn').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('#sellerOrdersTab .filter-btn').forEach(b => b.classList.remove('active')); this.classList.add('active'); appState.seller.filterOrderStatus = this.dataset.orderStatus; displaySellerOrders(document.getElementById('sellerOrderSearch').value); }); });
 function switchSellerTab(tab) {
     appState.seller.currentTab = tab;
-    document.querySelectorAll('.seller-tab').forEach((t,i) => { t.classList.toggle('active', (tab==='products' && i===0) || (tab==='orders' && i===1) || (tab==='analytics' && i===2)); });
-    document.getElementById('sellerProductsTab').style.display = tab === 'products' ? 'block' : 'none';
-    document.getElementById('sellerOrdersTab').style.display = tab === 'orders' ? 'block' : 'none';
-    document.getElementById('sellerAnalyticsTab').style.display = tab === 'analytics' ? 'block' : 'none';
-    if (tab === 'products') displaySellerProducts(document.getElementById('sellerProductSearch').value);
-    else if (tab === 'orders') displaySellerOrders(document.getElementById('sellerOrderSearch').value);
+    document.querySelectorAll('.seller-tab').forEach((t,i) => { t.classList.toggle('active', (tab==='products' && i===0) || (tab==='orders' && i===1) || (tab==='analytics' && i===2) || (tab==='returns' && i===3)); });
+    const prodTab = document.getElementById('sellerProductsTab');
+    if (prodTab) prodTab.style.display = tab === 'products' ? 'block' : 'none';
+    const ordTab = document.getElementById('sellerOrdersTab');
+    if (ordTab) ordTab.style.display = tab === 'orders' ? 'block' : 'none';
+    const anlTab = document.getElementById('sellerAnalyticsTab');
+    if (anlTab) anlTab.style.display = tab === 'analytics' ? 'block' : 'none';
+    const retTab = document.getElementById('sellerReturnsTab');
+    if (retTab) retTab.style.display = tab === 'returns' ? 'block' : 'none';
+    if (tab === 'products') displaySellerProducts(document.getElementById('sellerProductSearch')?.value || '');
+    else if (tab === 'orders') displaySellerOrders(document.getElementById('sellerOrderSearch')?.value || '');
     else if (tab === 'analytics') updateAnalytics();
+    else if (tab === 'returns') {
+        if (typeof displaySellerReturns === 'function') displaySellerReturns();
+    }
 }
 function updateAnalytics() { if (appState.seller.chart) appState.seller.chart.destroy(); const ctx = document.getElementById('salesChart')?.getContext('2d'); if (!ctx) return; appState.seller.chart = new Chart(ctx, { type: 'line', data: { labels: ['يناير','فبراير','مارس','أبريل','مايو','يونيو'], datasets: [{ label: 'المبيعات', data: [12000,19000,15000,22000,18000,24000], borderColor: '#1a237e', tension: 0.1 }] } }); }
 function showAddProductForm() { if (!appState.user || appState.userData.account_type !== 'seller') return showToast('غير مصرح', 'error'); document.getElementById('productModalTitle').textContent = 'إضافة منتج جديد'; document.getElementById('productName').value = ''; document.getElementById('productPrice').value = ''; document.getElementById('productStock').value = '1'; document.getElementById('productDescription').value = ''; document.getElementById('productCategory').value = ''; document.getElementById('productDiscount').value = ''; document.getElementById('editingProductId').value = ''; document.getElementById('multiImagePreview').innerHTML = ''; document.getElementById('productImages').value = ''; document.getElementById('productModal').classList.add('active'); }
