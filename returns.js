@@ -1,6 +1,22 @@
 // ============================================================
-// returns.js - نظام إدارة المرتجعات
+// returns.js - نظام إدارة المرتجعات (معدل لدعم الصور والقبول/الرفض)
 // ============================================================
+
+// دالة مساعدة لتأمين النصوص
+function escHTML(str) {
+  if (typeof escapeHTML === 'function') return escapeHTML(str);
+  if (typeof window.escapeHTML === 'function') return window.escapeHTML(str);
+  return String(str || '').replace(/[&<>"']/g, function(m) {
+    switch (m) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return m;
+    }
+  });
+}
 
 // ====== إنشاء طلب استرجاع مع صور ======
 async function createReturn(orderId, productId, quantity, reason, notes = '', images = []) {
@@ -14,39 +30,91 @@ async function createReturn(orderId, productId, quantity, reason, notes = '', im
   if (images.length > 0) {
     try {
       for (const file of images) {
-        const compressed = await compressImage(file, 1024, 1024, 0.8);
-        const ext = file.name.split('.').pop();
+        let uploadBlob = file;
+        if (typeof compressImage === 'function') {
+          try { uploadBlob = await compressImage(file, 1024, 1024, 0.8); } catch (e) { uploadBlob = file; }
+        }
+        const ext = file.name ? file.name.split('.').pop() : 'jpg';
         const uniqueName = `return-${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
         const filePath = `returns/${uniqueName}`;
-        const { error: uploadError } = await supabaseClient.storage.from('return-images').upload(filePath, compressed);
-        if (uploadError) throw uploadError;
-        const { data: { publicUrl } } = supabaseClient.storage.from('return-images').getPublicUrl(filePath);
-        imageUrls.push(publicUrl);
+        const { error: uploadError } = await supabaseClient.storage.from('return-images').upload(filePath, uploadBlob);
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabaseClient.storage.from('return-images').getPublicUrl(filePath);
+          if (publicUrl) imageUrls.push(publicUrl);
+        } else {
+          console.warn('تحذير أثناء رفع صورة الاسترجاع:', uploadError);
+        }
       }
     } catch (err) {
-      showToast('فشل رفع الصور: ' + err.message, 'error');
-      return null;
+      console.warn('فشل رفع الصور:', err);
     }
   }
 
-  const { data, error } = await supabaseClient.rpc('create_return', {
-    p_order_id: orderId,
-    p_buyer_id: appState.user.id,
-    p_product_id: productId,
-    p_quantity: quantity,
-    p_return_reason: reason,
-    p_customer_notes: notes,
-    p_images: imageUrls
-  });
+  try {
+    // 1. محاولة استخدام الـ RPC إن كان موجوداً
+    const { data: rpcData, error: rpcError } = await supabaseClient.rpc('create_return', {
+      p_order_id: orderId,
+      p_buyer_id: appState.user.id,
+      p_product_id: productId,
+      p_quantity: quantity,
+      p_return_reason: reason,
+      p_customer_notes: notes,
+      p_images: imageUrls
+    });
 
-  if (error) {
+    if (!rpcError && rpcData) {
+      showToast('✅ تم إنشاء طلب الاسترجاع بنجاح', 'success');
+      return rpcData;
+    }
+
+    // 2. خطة بديلة: الإدراج المباشر في جدول returns
+    const { data: orderData } = await supabaseClient
+      .from('orders')
+      .select('seller_id')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    const insertPayload = {
+      order_id: orderId,
+      buyer_id: appState.user.id,
+      product_id: productId,
+      seller_id: orderData?.seller_id || null,
+      quantity: Number(quantity) || 1,
+      return_reason: reason,
+      customer_notes: notes || null,
+      images: imageUrls,
+      status: 'pending',
+      return_fee: 20,
+      requested_at: new Date().toISOString()
+    };
+
+    const { data: directData, error: directError } = await supabaseClient
+      .from('returns')
+      .insert(insertPayload)
+      .select()
+      .maybeSingle();
+
+    if (directError) throw directError;
+
+    // إشعار للبائع
+    if (insertPayload.seller_id && typeof sendNotification === 'function') {
+      try {
+        await sendNotification(
+          insertPayload.seller_id,
+          '📦 طلب استرجاع جديد',
+          `تم تقديم طلب استرجاع جديد على الطلب #${orderId.slice(0, 8)}`,
+          { order_id: orderId, return_id: directData?.id }
+        );
+      } catch (e) { console.warn('Notification error:', e); }
+    }
+
+    showToast('✅ تم إنشاء طلب الاسترجاع بنجاح', 'success');
+    return directData || true;
+  } catch (error) {
     console.error('❌ فشل إنشاء طلب استرجاع:', error);
     showToast(error.message || 'فشل إنشاء طلب الاسترجاع', 'error');
     return null;
   }
-
-  showToast('✅ تم إنشاء طلب الاسترجاع بنجاح', 'success');
-  return data;
 }
 
 // ====== دالة مساعدة لربط بيانات المرتجعات ======
@@ -54,29 +122,56 @@ async function enrichReturnsData(returns) {
   if (!returns || !returns.length) return [];
   try {
     const productIds = [...new Set(returns.map(r => r.product_id).filter(Boolean))];
-    const userIds = [...new Set([
-      ...returns.map(r => r.buyer_id),
-      ...returns.map(r => r.seller_id),
-      ...returns.map(r => r.delivery_id)
-    ].filter(Boolean))];
     const orderIds = [...new Set(returns.map(r => r.order_id).filter(Boolean))];
 
-    const [productsRes, usersRes, ordersRes] = await Promise.all([
-      productIds.length ? supabaseClient.from('products').select('id, name, image_url, price, category').in('id', productIds) : { data: [] },
-      userIds.length ? supabaseClient.from('user_data').select('id, name, phone, address, center, image_url').in('id', userIds) : { data: [] },
-      orderIds.length ? supabaseClient.from('orders').select('id, total_price, shipping_address, center, customer_name, customer_phone').in('id', orderIds) : { data: [] }
+    // 1. جلب المنتجات والطلبات أولاً
+    const [productsRes, ordersRes] = await Promise.all([
+      productIds.length ? supabaseClient.from('products').select('*').in('id', productIds) : { data: [] },
+      orderIds.length ? supabaseClient.from('orders').select('*').in('id', orderIds) : { data: [] }
     ]);
 
     const productMap = new Map((productsRes.data || []).map(p => [p.id, p]));
-    const userMap = new Map((usersRes.data || []).map(u => [u.id, u]));
     const orderMap = new Map((ordersRes.data || []).map(o => [o.id, o]));
 
+    // 2. تجميع معرفات جميع المستخدمين (المشتري، البائع، المندوب) مع استخراج معرف البائع من الطلب أو المنتج إذا كان ناقصاً
+    const userIdsSet = new Set();
     returns.forEach(r => {
-      if (r.product_id) r.product = productMap.get(r.product_id) || { name: 'منتج غير معروف', image_url: null };
-      if (r.buyer_id) r.buyer = userMap.get(r.buyer_id) || { name: 'عميل' };
-      if (r.seller_id) r.seller = userMap.get(r.seller_id) || { name: 'بائع' };
-      if (r.delivery_id) r.delivery = userMap.get(r.delivery_id) || { name: 'مندوب' };
-      if (r.order_id) r.order = orderMap.get(r.order_id) || {};
+      const order = orderMap.get(r.order_id);
+      const prod = productMap.get(r.product_id);
+      const sellerId = r.seller_id || (order && order.seller_id) || (prod && prod.user_id);
+      const buyerId = r.buyer_id || (order && order.buyer_id);
+
+      if (sellerId) {
+        r.seller_id = sellerId;
+        userIdsSet.add(sellerId);
+      }
+      if (buyerId) {
+        r.buyer_id = buyerId;
+        userIdsSet.add(buyerId);
+      }
+      if (r.delivery_id) {
+        userIdsSet.add(r.delivery_id);
+      }
+    });
+
+    const userIds = [...userIdsSet];
+    const usersRes = userIds.length
+      ? await supabaseClient.from('user_data').select('id, name, phone, image_url, center, village, governorate, address').in('id', userIds)
+      : { data: [] };
+
+    const userMap = new Map((usersRes.data || []).map(u => [u.id, u]));
+
+    returns.forEach(r => {
+      const order = orderMap.get(r.order_id) || {};
+      const prod = productMap.get(r.product_id) || {};
+      const sellerId = r.seller_id || order.seller_id || prod.user_id;
+      const buyerId = r.buyer_id || order.buyer_id;
+
+      r.product = prod.id ? prod : { name: 'منتج غير معروف', image_url: null };
+      r.order = order;
+      r.buyer = userMap.get(buyerId) || { name: order.customer_name || 'عميل', phone: order.customer_phone || '', address: order.shipping_address || '' };
+      r.seller = (sellerId && userMap.get(sellerId)) || { name: 'بائع', center: order.center || '' };
+      r.delivery = userMap.get(r.delivery_id) || {};
     });
   } catch (enrichErr) {
     console.warn('تحذير أثناء إثراء بيانات المرتجعات:', enrichErr);
@@ -106,14 +201,39 @@ async function loadMyReturns() {
 async function loadSellerReturns(sellerId) {
   if (!sellerId) return [];
   try {
-    const { data, error } = await supabaseClient
+    // 1. جلب المرتجعات بالـ seller_id المباشر
+    const { data: directReturns, error: directErr } = await supabaseClient
       .from('returns')
       .select('*')
       .eq('seller_id', sellerId)
       .order('requested_at', { ascending: false });
 
-    if (error) throw error;
-    return await enrichReturnsData(data || []);
+    // 2. جلب طلبات البائع للحصول على order_ids تحسباً لعدم تعبئة seller_id في جدول returns
+    const { data: sellerOrders } = await supabaseClient
+      .from('orders')
+      .select('id')
+      .eq('seller_id', sellerId);
+
+    const orderIds = (sellerOrders || []).map(o => o.id).filter(Boolean);
+    let orderReturns = [];
+    if (orderIds.length > 0) {
+      const { data: ordRet } = await supabaseClient
+        .from('returns')
+        .select('*')
+        .in('order_id', orderIds)
+        .order('requested_at', { ascending: false });
+      orderReturns = ordRet || [];
+    }
+
+    // دمج السجلات مع إزالة التكرار
+    const combinedMap = new Map();
+    (directReturns || []).forEach(r => combinedMap.set(r.id, r));
+    orderReturns.forEach(r => combinedMap.set(r.id, r));
+
+    const combined = Array.from(combinedMap.values());
+    combined.sort((a, b) => new Date(b.requested_at || 0) - new Date(a.requested_at || 0));
+
+    return await enrichReturnsData(combined);
   } catch (error) {
     console.error('❌ خطأ في جلب مرتجعات البائع:', error);
     return [];
@@ -136,6 +256,56 @@ async function loadAllReturnsForFounder() {
   }
 }
 
+// ====== مسح وإخفاء المعاملات للمندوب ======
+function getHiddenReturns() {
+  if (!appState.user) return [];
+  try {
+    const key = `hidden_delivery_returns_${appState.user.id}`;
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function hideReturnForCourier(returnId) {
+  if (!appState.user) return;
+  try {
+    const key = `hidden_delivery_returns_${appState.user.id}`;
+    const list = getHiddenReturns();
+    if (!list.includes(returnId)) {
+      list.push(returnId);
+      localStorage.setItem(key, JSON.stringify(list));
+    }
+  } catch (e) {
+    console.warn('Error saving hidden return:', e);
+  }
+}
+
+function deleteDeliveryReturnFromView(returnId) {
+  if (!confirm('هل تريد مسح هذه المهمة من قائمتك؟')) return;
+  hideReturnForCourier(returnId);
+  if (typeof displayDeliveryReturns === 'function') displayDeliveryReturns();
+  showToast('تم مسح المهمة من قائمتك', 'success');
+}
+
+function clearCompletedDeliveryReturns() {
+  if (!confirm('هل تريد مسح جميع مهام الاسترجاع المكتملة من قائمتك؟')) return;
+  const list = appState.delivery?.myReturns || [];
+  let clearedCount = 0;
+  list.forEach(ret => {
+    if (ret.status === 'completed' || ret.status === 'delivered_to_seller' || ret.status === 'cancelled') {
+      hideReturnForCourier(ret.id);
+      clearedCount++;
+    }
+  });
+  if (typeof displayDeliveryReturns === 'function') displayDeliveryReturns();
+  if (clearedCount > 0) {
+    showToast(`تم مسح ${clearedCount} مهمة مكتملة من قائمتك بنجاح`, 'success');
+  } else {
+    showToast('لا توجد مهام مكتملة لمسحها', 'info');
+  }
+}
+
 // ====== جلب مهام الاسترجاع للمندوب ======
 async function loadDeliveryReturns(deliveryId) {
   if (!deliveryId) return [];
@@ -147,7 +317,9 @@ async function loadDeliveryReturns(deliveryId) {
       .order('requested_at', { ascending: false });
 
     if (error) throw error;
-    return await enrichReturnsData(data || []);
+    const enriched = await enrichReturnsData(data || []);
+    const hidden = getHiddenReturns();
+    return enriched.filter(r => !hidden.includes(r.id));
   } catch (error) {
     console.error('خطأ في جلب مهام الاسترجاع:', error);
     return [];
@@ -368,9 +540,12 @@ async function claimReturn(returnId) {
   try {
     const success = await updateReturnStatus(returnId, 'assigned', { delivery_id: appState.user.id });
     if (success) {
-      showToast('تم استلام المهمة بنجاح', 'success');
+      showToast('✅ تم استلام المهمة بنجاح وانتقالها لمهامك الخاصة', 'success');
       if (typeof displayDeliveryReturns === 'function') await displayDeliveryReturns();
       if (typeof refreshDeliveryDashboard === 'function') await refreshDeliveryDashboard();
+      if (typeof switchDeliveryTab === 'function') {
+        switchDeliveryTab('my_returns');
+      }
     }
   } catch (err) {
     showToast(err.message, 'error');
@@ -402,8 +577,9 @@ async function updateReturnByCourier(returnId, status) {
 // ====== عرض طلبات ومهام الاسترجاع في لوحة المندوب ======
 async function displayDeliveryReturns() {
   if (!appState.user || appState.userData.account_type !== 'delivery') return;
-  const container = document.getElementById('deliveryReturnsList');
-  if (!container) return;
+
+  const availContainer = document.getElementById('availableReturnsList');
+  const myContainer = document.getElementById('myDeliveryReturnsList');
 
   try {
     const [availableReturns, myReturns] = await Promise.all([
@@ -411,240 +587,313 @@ async function displayDeliveryReturns() {
       loadDeliveryReturns(appState.user.id)
     ]);
 
-    const countEl = document.getElementById('deliveryReturnsCount');
-    if (countEl) countEl.textContent = availableReturns.length + myReturns.length;
+    const availCount = availableReturns ? availableReturns.length : 0;
+    const myCount = myReturns ? myReturns.length : 0;
 
-    if (availableReturns.length === 0 && myReturns.length === 0) {
-      container.innerHTML = `
-        <div style="text-align:center; padding:40px; color:#999;">
-          <i class="fas fa-undo-alt" style="font-size:2.5rem; margin-bottom:10px;"></i>
-          <p>لا توجد مهام استرجاع حالياً</p>
-        </div>
-      `;
-      return;
-    }
+    // تحديث أعداد المرتجعات في الإحصائيات والتبويبات
+    const availStatEl = document.getElementById('availableReturnsCount');
+    if (availStatEl) availStatEl.textContent = availCount;
 
-    let html = '';
+    const availTabEl = document.getElementById('availableReturnsTabCount');
+    if (availTabEl) availTabEl.textContent = availCount;
 
-    // قسم المرتجعات المتاحة للاستلام
-    if (availableReturns.length > 0) {
-      html += `<div style="font-weight:bold; font-size:1.1rem; margin:15px 0 10px; color:#1a237e;"><i class="fas fa-box-open"></i> مهام استرجاع جديدة معتمدة (${availableReturns.length})</div>`;
-      availableReturns.forEach(ret => {
-        const prod = ret.product || {};
-        const buyer = ret.buyer || {};
-        const seller = ret.seller || {};
-        const order = ret.order || {};
-        const buyerAddress = order.shipping_address || buyer.address || 'العنوان غير محدد';
-        const buyerPhone = buyer.phone || order.customer_phone || '';
-        const sellerPhone = seller.phone || '';
-        const sellerAddress = seller.address || seller.center || 'غير محدد';
-        const sellerId = seller.id || ret.seller_id;
-        const returnFee = ret.return_fee || 20;
+    const myStatEl = document.getElementById('myReturnsCount');
+    if (myStatEl) myStatEl.textContent = myCount;
 
-        const imagesHtml = ret.images && ret.images.length > 0
-          ? `<div class="return-images-preview" style="margin-top:8px;">${ret.images.map(img => `<img src="${img}" loading="lazy" onclick="openImageModal('${img}')" style="width:50px;height:50px;object-fit:cover;border-radius:6px;margin:2px;cursor:pointer;">`).join('')}</div>`
-          : '';
+    const myTabEl = document.getElementById('myReturnsTabCount');
+    if (myTabEl) myTabEl.textContent = myCount;
 
-        html += `
-          <div class="return-card" style="border-right: 4px solid #ff9800; margin-bottom:15px; background:#fff; border-radius:10px; padding:15px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <div class="return-card-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:10px;">
-              <span class="return-id" style="font-weight:bold; color:#ff9800;"><i class="fas fa-undo-alt"></i> طلب استرجاع #${ret.id.slice(0,8)}</span>
-              <span class="return-status ${ret.status}" style="padding:3px 10px; border-radius:12px; font-size:0.8rem;">${getReturnStatusText(ret.status)}</span>
-            </div>
-            <div class="return-card-body">
-              <div class="return-product-info" style="display:flex; gap:12px; margin-bottom:10px;">
-                <div class="return-product-image" style="width:60px; height:60px; min-width:60px; border-radius:8px; overflow:hidden; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">
-                  ${prod.image_url ? `<img src="${prod.image_url}" loading="lazy" style="width:100%; height:100%; object-fit:cover;">` : '<span style="font-size:1.5rem;">📦</span>'}
+    const totalCountEl = document.getElementById('deliveryReturnsCount');
+    if (totalCountEl) totalCountEl.textContent = availCount + myCount;
+
+    // 1. عرض المرتجعات المتاحة
+    if (availContainer) {
+      if (availCount === 0) {
+        availContainer.innerHTML = `
+          <div style="text-align:center; padding:40px; color:#999;">
+            <i class="fas fa-box-open" style="font-size:2.5rem; margin-bottom:10px;"></i>
+            <p>لا توجد مرتجعات متاحة حالياً</p>
+          </div>
+        `;
+      } else {
+        let availHtml = '';
+        availableReturns.forEach(ret => {
+          const prod = ret.product || {};
+          const buyer = ret.buyer || {};
+          const seller = ret.seller || {};
+          const order = ret.order || {};
+
+          const sellerName = seller.name || seller.full_name || 'البائع';
+          const sellerPhone = seller.phone || '';
+          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || 'غير محدد';
+          const sellerImage = seller.image_url ? `<img src="${seller.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-store" style="font-size:1.1rem; color:#f57c00;"></i>';
+          const sellerId = seller.id || ret.seller_id;
+
+          const buyerName = buyer.name || order.customer_name || 'العميل';
+          const buyerPhone = buyer.phone || order.customer_phone || '';
+          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || 'العنوان غير محدد';
+          const buyerImage = buyer.image_url ? `<img src="${buyer.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-user" style="font-size:1.1rem; color:#1976d2;"></i>';
+
+          const returnFee = ret.return_fee || 20;
+
+          const imagesHtml = ret.images && ret.images.length > 0
+            ? `<div class="return-images-preview" style="margin-top:8px;">${ret.images.map(img => `<img src="${img}" loading="lazy" onclick="openImageModal('${img}')" style="width:50px;height:50px;object-fit:cover;border-radius:6px;margin:2px;cursor:pointer;">`).join('')}</div>`
+            : '';
+
+          availHtml += `
+            <div class="order-card" style="border-right: 4px solid #ff9800; margin-bottom:15px;">
+              <div class="order-header">
+                <span class="order-id">#${ret.id.slice(0,8)} (استرجاع)</span>
+                <span class="order-status ${ret.status}">${getReturnStatusText(ret.status)}</span>
+              </div>
+              <div class="order-product">
+                <div class="order-product-image">
+                  ${prod.image_url ? `<img src="${prod.image_url}" loading="lazy">` : '📦'}
                 </div>
-                <div>
-                  <div style="font-weight:bold; font-size:1rem; color:#1a237e;">${escapeHTML(prod.name || 'منتج')}</div>
-                  <div style="font-size:0.85rem; color:#666;">الكمية المطلوب استرجاعها: <strong>${ret.quantity}</strong></div>
-                  <div style="font-size:0.85rem; color:#d32f2f;">السبب: <strong>${escapeHTML(ret.return_reason || 'غير محدد')}</strong></div>
+                <div class="order-product-details">
+                  <div><strong>${escapeHTML(prod.name || 'منتج')}</strong></div>
+                  <div>الكمية المطلوب استرجاعها: <strong>${ret.quantity}</strong></div>
+                  <div style="color:#d32f2f;">السبب: ${escapeHTML(ret.return_reason || 'غير محدد')}</div>
                   ${ret.customer_notes ? `<div style="font-size:0.8rem; color:#777;">ملاحظات: ${escapeHTML(ret.customer_notes)}</div>` : ''}
                 </div>
               </div>
 
               ${imagesHtml}
 
-              <!-- مربع رسوم الاسترجاع والمبلغ المستحق للمندوب -->
+              <!-- معلومات البائع -->
+              <div style="margin-top:10px; padding:12px; background:#fef8e8; border-radius:8px; border:1px solid #ffe0b2;">
+                <div style="font-weight:bold; color:#f57c00; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fas fa-store"></i> جهة التسليم (البائع):</span>
+                  ${sellerId ? `<button type="button" onclick="showStorePage('${sellerId}')" style="background:#4caf50; color:#fff; border:none; padding:3px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:bold;"><i class="fas fa-store"></i> المتجر</button>` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:0.95rem; margin-bottom:5px;">
+                  ${sellerImage}
+                  <span><strong>الاسم:</strong> ${escapeHTML(sellerName)}</span>
+                </div>
+                <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📞 رقم هاتف البائع:</strong> <a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone || 'غير متوفر')}</a></span>
+                  ${sellerPhone ? `
+                    <a href="tel:${sellerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
+                    <a href="https://wa.me/${sellerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
+                  ` : ''}
+                </div>
+                <div style="font-size:0.85rem; color:#555; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📍 عنوان البائع:</strong> ${escapeHTML(sellerAddress)}</span>
+                  <a href="https://www.google.com/maps/search/${encodeURIComponent(sellerAddress)}" target="_blank" style="background:#ff5722; color:#fff; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-map-marker-alt"></i> الخريطة</a>
+                </div>
+              </div>
+
+              <!-- معلومات العميل -->
+              <div style="margin-top:8px; padding:12px; background:#f5f7fa; border-radius:8px; border:1px solid #e0e0e0;">
+                <div style="font-weight:bold; color:#1976d2; margin-bottom:6px;"><i class="fas fa-user"></i> جهة الاستلام (العميل):</div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:0.95rem; margin-bottom:5px;">
+                  ${buyerImage}
+                  <span><strong>الاسم:</strong> ${escapeHTML(buyerName)}</span>
+                </div>
+                <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📞 رقم هاتف العميل:</strong> <a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone || 'غير متوفر')}</a></span>
+                  ${buyerPhone ? `
+                    <a href="tel:${buyerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
+                    <a href="https://wa.me/${buyerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
+                  ` : ''}
+                </div>
+                <div style="font-size:0.85rem; color:#555; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📍 عنوان العميل:</strong> ${escapeHTML(buyerAddress)}</span>
+                  <a href="https://www.google.com/maps/search/${encodeURIComponent(buyerAddress)}" target="_blank" style="background:#ff5722; color:#fff; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-map-marker-alt"></i> الخريطة</a>
+                </div>
+              </div>
+
+              <!-- صندوق أجرة التوصيل -->
               <div style="margin:10px 0; padding:10px 14px; background:#e8f5e9; border-radius:8px; border:1px solid #81c784; display:flex; justify-content:space-between; align-items:center;">
                 <div>
                   <div style="font-weight:bold; color:#2e7d32; font-size:0.95rem;"><i class="fas fa-hand-holding-usd"></i> المبلغ المستحق لك (أجرة التوصيل):</div>
-                  <div style="font-size:0.8rem; color:#555; margin-top:2px;">رسوم يتحملها العميل (${returnFee} ج.م) وتُحصل عند استلام المرتجع</div>
+                  <div style="font-size:0.8rem; color:#555;">يتحملها العميل (${returnFee} ج.م) وتُحصل عند استلام المرتجع</div>
                 </div>
                 <div style="font-weight:900; color:#1b5e20; font-size:1.3rem;">${returnFee} ج.م</div>
               </div>
 
-              <!-- خطوة 1: الاستلام من العميل -->
-              <div style="margin-top:10px; padding:10px; background:#f5f7fa; border-radius:8px; border:1px solid #e0e0e0;">
-                <div style="font-weight:bold; color:#1976d2; margin-bottom:4px;"><i class="fas fa-user"></i> الخطوة 1: مكان الاستلام (العميل)</div>
-                <div style="font-size:0.9rem;"><strong>الاسم:</strong> ${escapeHTML(buyer.name || order.customer_name || 'عميل')}</div>
-                <div style="font-size:0.9rem;"><strong>العنوان:</strong> ${escapeHTML(buyerAddress)}</div>
-                <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                  ${buyerPhone ? `
-                    <a href="tel:${buyerPhone}" class="action-btn" style="background:#1a237e; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-phone"></i> اتصال</a>
-                    <a href="https://wa.me/${buyerPhone}" target="_blank" class="action-btn" style="background:#25D366; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fab fa-whatsapp"></i> واتساب</a>
-                  ` : ''}
-                  <a href="https://www.google.com/maps/search/${encodeURIComponent(buyerAddress)}" target="_blank" class="action-btn" style="background:#ff5722; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-map-marker-alt"></i> الخريطة</a>
-                </div>
-              </div>
-
-              <!-- خطوة 2: التسليم للبائع -->
-              <div style="margin-top:10px; padding:10px; background:#fef8e8; border-radius:8px; border:1px solid #ffe0b2;">
-                <div style="font-weight:bold; color:#f57c00; margin-bottom:4px;"><i class="fas fa-store"></i> الخطوة 2: مكان التسليم (البائع)</div>
-                <div style="font-size:0.9rem;"><strong>البائع:</strong> ${escapeHTML(seller.name || 'بائع')}</div>
-                <div style="font-size:0.9rem;"><strong>عنوان/مركز البائع:</strong> ${escapeHTML(sellerAddress)}</div>
-                <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                  ${sellerId ? `
-                    <button type="button" onclick="showStorePage('${sellerId}')" class="action-btn" style="background:#4caf50; color:#fff; padding:4px 10px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem;"><i class="fas fa-store"></i> زيارة متجر البائع</button>
-                  ` : ''}
-                  ${sellerPhone ? `
-                    <a href="tel:${sellerPhone}" class="action-btn" style="background:#1a237e; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-phone"></i> اتصال</a>
-                    <a href="https://wa.me/${sellerPhone}" target="_blank" class="action-btn" style="background:#25D366; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fab fa-whatsapp"></i> واتساب</a>
-                  ` : ''}
-                  <a href="https://www.google.com/maps/search/${encodeURIComponent(sellerAddress)}" target="_blank" class="action-btn" style="background:#ff5722; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-map-marker-alt"></i> خريطة البائع</a>
-                </div>
-              </div>
-
-              <div style="margin-top:14px;">
+              <div style="margin-top:12px;">
                 <button class="add-to-cart" onclick="claimReturn('${ret.id}')" style="background:#ff9800; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
                   <i class="fas fa-hand-holding-box"></i> استلام مهمة الاسترجاع (${returnFee} ج.م)
                 </button>
               </div>
             </div>
-          </div>
-        `;
-      });
+          `;
+        });
+        availContainer.innerHTML = availHtml;
+      }
     }
 
-    // قسم مهام الاسترجاع الخاصة بالمندوب
-    if (myReturns.length > 0) {
-      html += `<div style="font-weight:bold; font-size:1.1rem; margin:20px 0 10px; color:#2e7d32;"><i class="fas fa-tasks"></i> مهام الاسترجاع الخاصة بي (${myReturns.length})</div>`;
-      myReturns.forEach(ret => {
-        const prod = ret.product || {};
-        const buyer = ret.buyer || {};
-        const seller = ret.seller || {};
-        const order = ret.order || {};
-        const buyerAddress = order.shipping_address || buyer.address || 'العنوان غير محدد';
-        const buyerPhone = buyer.phone || order.customer_phone || '';
-        const sellerPhone = seller.phone || '';
-        const sellerAddress = seller.address || seller.center || 'غير محدد';
-        const sellerId = seller.id || ret.seller_id;
-        const returnFee = ret.return_fee || 20;
-
-        let actionBtns = '';
-        if (ret.status === 'assigned') {
-          actionBtns = `
-            <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'courier_on_way_to_customer')" style="background:#1976d2; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
-              <i class="fas fa-motorcycle"></i> المرحلة 1: التوجه للعميل
-            </button>
-          `;
-        } else if (ret.status === 'courier_on_way_to_customer') {
-          actionBtns = `
-            <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'picked_up_from_customer')" style="background:#ff9800; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
-              <i class="fas fa-box-check"></i> المرحلة 2: تم استلام المنتج من العميل (${returnFee} ج.م)
-            </button>
-          `;
-        } else if (ret.status === 'picked_up_from_customer') {
-          actionBtns = `
-            <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'courier_on_way_to_seller')" style="background:#0288d1; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
-              <i class="fas fa-truck-loading"></i> المرحلة 3: التوجه للبائع لتسليم المرتجع
-            </button>
-          `;
-        } else if (ret.status === 'courier_on_way_to_seller') {
-          actionBtns = `
-            <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'delivered_to_seller')" style="background:#388e3c; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
-              <i class="fas fa-store"></i> المرحلة 4: تم تسليم المنتج للبائع
-            </button>
-          `;
-        } else if (ret.status === 'delivered_to_seller') {
-          actionBtns = `
-            <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'completed')" style="background:#1b5e20; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
-              <i class="fas fa-check-double"></i> المرحلة 5: تأكيد إتمام الاسترجاع بالكامل
-            </button>
-          `;
-        } else if (ret.status === 'completed') {
-          actionBtns = `
-            <div style="color:#1b5e20; font-weight:bold; text-align:center; padding:12px; background:#e8f5e9; border-radius:8px; border:1px solid #81c784; font-size:1rem;">
-              <i class="fas fa-check-circle"></i> تم إتمام الاسترجاع بنجاح في جميع المراحل
-            </div>
-          `;
-        }
-
-        // تواريخ المراحل المسجلة من الخادم
-        let timestampsHtml = `
-          <div style="font-size:0.8rem; color:#666; margin-top:8px; line-height:1.6; border-top:1px dashed #ddd; padding-top:6px;">
-            ${ret.assigned_at ? `<div>🕒 <strong>استلام المهمة:</strong> ${new Date(ret.assigned_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-            ${ret.courier_on_way_to_customer_at ? `<div>🕒 <strong>بدء التوجه للعميل:</strong> ${new Date(ret.courier_on_way_to_customer_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-            ${ret.picked_up_from_customer_at ? `<div>🕒 <strong>استلام المنتج من العميل:</strong> ${new Date(ret.picked_up_from_customer_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-            ${ret.courier_on_way_to_seller_at ? `<div>🕒 <strong>بدء التوجه للبائع:</strong> ${new Date(ret.courier_on_way_to_seller_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-            ${ret.delivered_to_seller_at ? `<div>🕒 <strong>تسليم البائع:</strong> ${new Date(ret.delivered_to_seller_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-            ${ret.completed_at ? `<div>🕒 <strong>الإتمام النهائي:</strong> ${new Date(ret.completed_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+    // 2. عرض مهام الاسترجاع الخاصة بالمندوب
+    if (myContainer) {
+      if (myCount === 0) {
+        myContainer.innerHTML = `
+          <div style="text-align:center; padding:40px; color:#999;">
+            <i class="fas fa-undo-alt" style="font-size:2.5rem; margin-bottom:10px;"></i>
+            <p>لا توجد مهام استرجاع خاصة بك حالياً</p>
           </div>
         `;
+      } else {
+        let myHtml = '';
+        myReturns.forEach(ret => {
+          const prod = ret.product || {};
+          const buyer = ret.buyer || {};
+          const seller = ret.seller || {};
+          const order = ret.order || {};
 
-        html += `
-          <div class="return-card" style="border-right: 4px solid #4caf50; margin-bottom:15px; background:#fff; border-radius:10px; padding:15px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <div class="return-card-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:10px;">
-              <span class="return-id" style="font-weight:bold; color:#2e7d32;"><i class="fas fa-undo-alt"></i> مهمة استرجاع #${ret.id.slice(0,8)}</span>
-              <span class="return-status ${ret.status}" style="padding:3px 10px; border-radius:12px; font-size:0.8rem;">${getReturnStatusText(ret.status)}</span>
+          const sellerName = seller.name || seller.full_name || 'البائع';
+          const sellerPhone = seller.phone || '';
+          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || 'غير محدد';
+          const sellerImage = seller.image_url ? `<img src="${seller.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-store" style="font-size:1.1rem; color:#f57c00;"></i>';
+          const sellerId = seller.id || ret.seller_id;
+
+          const buyerName = buyer.name || order.customer_name || 'العميل';
+          const buyerPhone = buyer.phone || order.customer_phone || '';
+          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || 'العنوان غير محدد';
+          const buyerImage = buyer.image_url ? `<img src="${buyer.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-user" style="font-size:1.1rem; color:#1976d2;"></i>';
+
+          const returnFee = ret.return_fee || 20;
+
+          let actionBtns = '';
+          if (ret.status === 'assigned') {
+            actionBtns = `
+              <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'courier_on_way_to_customer')" style="background:#1976d2; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
+                <i class="fas fa-motorcycle"></i> المرحلة 1: التوجه للعميل
+              </button>
+            `;
+          } else if (ret.status === 'courier_on_way_to_customer') {
+            actionBtns = `
+              <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'picked_up_from_customer')" style="background:#ff9800; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
+                <i class="fas fa-box-check"></i> المرحلة 2: تم استلام المنتج من العميل (${returnFee} ج.م)
+              </button>
+            `;
+          } else if (ret.status === 'picked_up_from_customer') {
+            actionBtns = `
+              <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'courier_on_way_to_seller')" style="background:#0288d1; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
+                <i class="fas fa-truck-loading"></i> المرحلة 3: التوجه للبائع لتسليم المرتجع
+              </button>
+            `;
+          } else if (ret.status === 'courier_on_way_to_seller') {
+            actionBtns = `
+              <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'delivered_to_seller')" style="background:#388e3c; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
+                <i class="fas fa-store"></i> المرحلة 4: تم تسليم المنتج للبائع
+              </button>
+            `;
+          } else if (ret.status === 'delivered_to_seller') {
+            actionBtns = `
+              <button class="add-to-cart" onclick="updateReturnByCourier('${ret.id}', 'completed')" style="background:#1b5e20; width:100%; padding:11px; border-radius:8px; font-weight:bold; cursor:pointer; border:none; color:#fff; font-size:1rem;">
+                <i class="fas fa-check-double"></i> المرحلة 5: تأكيد إتمام الاسترجاع بالكامل
+              </button>
+            `;
+          } else if (ret.status === 'completed') {
+            actionBtns = `
+              <div style="color:#1b5e20; font-weight:bold; text-align:center; padding:12px; background:#e8f5e9; border-radius:8px; border:1px solid #81c784; font-size:1rem;">
+                <i class="fas fa-check-circle"></i> تم إتمام الاسترجاع بنجاح في جميع المراحل
+              </div>
+              <button onclick="deleteDeliveryReturnFromView('${ret.id}')" style="background:#d32f2f; color:#fff; border:none; padding:8px 12px; border-radius:6px; margin-top:8px; width:100%; cursor:pointer; font-weight:bold;">
+                <i class="fas fa-trash-alt"></i> مسح المهمة من القائمة
+              </button>
+            `;
+          }
+
+          let timestampsHtml = `
+            <div style="font-size:0.8rem; color:#666; margin-top:8px; line-height:1.6; border-top:1px dashed #ddd; padding-top:6px;">
+              ${ret.assigned_at ? `<div>🕒 <strong>استلام المهمة:</strong> ${new Date(ret.assigned_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+              ${ret.courier_on_way_to_customer_at ? `<div>🕒 <strong>بدء التوجه للعميل:</strong> ${new Date(ret.courier_on_way_to_customer_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+              ${ret.picked_up_from_customer_at ? `<div>🕒 <strong>استلام المنتج من العميل:</strong> ${new Date(ret.picked_up_from_customer_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+              ${ret.courier_on_way_to_seller_at ? `<div>🕒 <strong>بدء التوجه للبائع:</strong> ${new Date(ret.courier_on_way_to_seller_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+              ${ret.delivered_to_seller_at ? `<div>🕒 <strong>تسليم البائع:</strong> ${new Date(ret.delivered_to_seller_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+              ${ret.completed_at ? `<div>🕒 <strong>الإتمام النهائي:</strong> ${new Date(ret.completed_at).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</div>` : ''}
             </div>
-            <div class="return-card-body">
-              <div class="return-product-info" style="display:flex; gap:12px; margin-bottom:10px;">
-                <div class="return-product-image" style="width:60px; height:60px; min-width:60px; border-radius:8px; overflow:hidden; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">
-                  ${prod.image_url ? `<img src="${prod.image_url}" loading="lazy" style="width:100%; height:100%; object-fit:cover;">` : '<span style="font-size:1.5rem;">📦</span>'}
+          `;
+
+          const imagesHtml = ret.images && ret.images.length > 0
+            ? `<div class="return-images-preview" style="margin-top:8px;">${ret.images.map(img => `<img src="${img}" loading="lazy" onclick="openImageModal('${img}')" style="width:50px;height:50px;object-fit:cover;border-radius:6px;margin:2px;cursor:pointer;">`).join('')}</div>`
+            : '';
+
+          myHtml += `
+            <div class="order-card" style="border-right: 4px solid #4caf50; margin-bottom:15px;">
+              <div class="order-header">
+                <span class="order-id">#${ret.id.slice(0,8)} (استرجاع)</span>
+                <span class="order-status ${ret.status}">${getReturnStatusText(ret.status)}</span>
+              </div>
+              <div class="order-product">
+                <div class="order-product-image">
+                  ${prod.image_url ? `<img src="${prod.image_url}" loading="lazy">` : '📦'}
                 </div>
-                <div>
-                  <div style="font-weight:bold; font-size:1rem; color:#1a237e;">${escapeHTML(prod.name || 'منتج')}</div>
-                  <div style="font-size:0.85rem; color:#666;">الكمية: <strong>${ret.quantity}</strong></div>
-                  <div style="font-size:0.85rem; color:#d32f2f;">السبب: <strong>${escapeHTML(ret.return_reason || 'غير محدد')}</strong></div>
+                <div class="order-product-details">
+                  <div><strong>${escapeHTML(prod.name || 'منتج')}</strong></div>
+                  <div>الكمية: <strong>${ret.quantity}</strong></div>
+                  <div style="color:#d32f2f;">السبب: ${escapeHTML(ret.return_reason || 'غير محدد')}</div>
                 </div>
               </div>
 
-              <!-- قسم بيانات العميل -->
-              <div style="margin-top:10px; padding:10px; background:#f5f7fa; border-radius:8px; border:1px solid #e0e0e0;">
-                <div style="font-weight:bold; color:#1976d2; margin-bottom:4px;"><i class="fas fa-user"></i> العميل (مكان استلام المرتجع)</div>
-                <div style="font-size:0.9rem;"><strong>الاسم:</strong> ${escapeHTML(buyer.name || order.customer_name || 'عميل')}</div>
-                <div style="font-size:0.9rem;"><strong>العنوان:</strong> ${escapeHTML(buyerAddress)}</div>
-                <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                  ${buyerPhone ? `
-                    <a href="tel:${buyerPhone}" class="action-btn" style="background:#1a237e; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-phone"></i> اتصال</a>
-                    <a href="https://wa.me/${buyerPhone}" target="_blank" class="action-btn" style="background:#25D366; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fab fa-whatsapp"></i> واتساب</a>
-                  ` : ''}
-                  <a href="https://www.google.com/maps/search/${encodeURIComponent(buyerAddress)}" target="_blank" class="action-btn" style="background:#ff5722; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-map-marker-alt"></i> خريطة العميل</a>
-                </div>
-              </div>
+              ${imagesHtml}
 
-              <!-- قسم بيانات البائع -->
-              <div style="margin-top:10px; padding:10px; background:#fef8e8; border-radius:8px; border:1px solid #ffe0b2;">
-                <div style="font-weight:bold; color:#f57c00; margin-bottom:4px;"><i class="fas fa-store"></i> البائع (مكان تسليم المرتجع)</div>
-                <div style="font-size:0.9rem;"><strong>البائع:</strong> ${escapeHTML(seller.name || 'بائع')}</div>
-                <div style="font-size:0.9rem;"><strong>عنوان/مركز البائع:</strong> ${escapeHTML(sellerAddress)}</div>
-                <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                  ${sellerId ? `
-                    <button type="button" onclick="showStorePage('${sellerId}')" class="action-btn" style="background:#4caf50; color:#fff; padding:4px 10px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem;"><i class="fas fa-store"></i> زيارة متجر البائع</button>
-                  ` : ''}
+              <!-- معلومات البائع -->
+              <div style="margin-top:10px; padding:12px; background:#fef8e8; border-radius:8px; border:1px solid #ffe0b2;">
+                <div style="font-weight:bold; color:#f57c00; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fas fa-store"></i> جهة التسليم (البائع):</span>
+                  ${sellerId ? `<button type="button" onclick="showStorePage('${sellerId}')" style="background:#4caf50; color:#fff; border:none; padding:3px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:bold;"><i class="fas fa-store"></i> المتجر</button>` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:0.95rem; margin-bottom:5px;">
+                  ${sellerImage}
+                  <span><strong>الاسم:</strong> ${escapeHTML(sellerName)}</span>
+                </div>
+                <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📞 رقم هاتف البائع:</strong> <a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone || 'غير متوفر')}</a></span>
                   ${sellerPhone ? `
-                    <a href="tel:${sellerPhone}" class="action-btn" style="background:#1a237e; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-phone"></i> اتصال</a>
-                    <a href="https://wa.me/${sellerPhone}" target="_blank" class="action-btn" style="background:#25D366; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fab fa-whatsapp"></i> واتساب</a>
+                    <a href="tel:${sellerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
+                    <a href="https://wa.me/${sellerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
                   ` : ''}
-                  <a href="https://www.google.com/maps/search/${encodeURIComponent(sellerAddress)}" target="_blank" class="action-btn" style="background:#ff5722; color:#fff; padding:4px 10px; border-radius:6px; text-decoration:none; font-size:0.85rem;"><i class="fas fa-map-marker-alt"></i> خريطة البائع</a>
+                </div>
+                <div style="font-size:0.85rem; color:#555; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📍 عنوان البائع:</strong> ${escapeHTML(sellerAddress)}</span>
+                  <a href="https://www.google.com/maps/search/${encodeURIComponent(sellerAddress)}" target="_blank" style="background:#ff5722; color:#fff; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-map-marker-alt"></i> الخريطة</a>
                 </div>
               </div>
 
-              <div style="margin-top:14px;">
+              <!-- معلومات العميل -->
+              <div style="margin-top:8px; padding:12px; background:#f5f7fa; border-radius:8px; border:1px solid #e0e0e0;">
+                <div style="font-weight:bold; color:#1976d2; margin-bottom:6px;"><i class="fas fa-user"></i> جهة الاستلام (العميل):</div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:0.95rem; margin-bottom:5px;">
+                  ${buyerImage}
+                  <span><strong>الاسم:</strong> ${escapeHTML(buyerName)}</span>
+                </div>
+                <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📞 رقم هاتف العميل:</strong> <a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone || 'غير متوفر')}</a></span>
+                  ${buyerPhone ? `
+                    <a href="tel:${buyerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
+                    <a href="https://wa.me/${buyerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
+                  ` : ''}
+                </div>
+                <div style="font-size:0.85rem; color:#555; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span><strong>📍 عنوان العميل:</strong> ${escapeHTML(buyerAddress)}</span>
+                  <a href="https://www.google.com/maps/search/${encodeURIComponent(buyerAddress)}" target="_blank" style="background:#ff5722; color:#fff; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-map-marker-alt"></i> الخريطة</a>
+                </div>
+              </div>
+
+              <!-- أجرة التوصيل -->
+              <div style="margin:8px 0; padding:8px 12px; background:#e8f5e9; border-radius:8px; border:1px solid #81c784; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:bold; color:#2e7d32;"><i class="fas fa-money-bill-wave"></i> أجرة التوصيل المستحقة لك:</span>
+                <span style="font-weight:900; color:#1b5e20; font-size:1.15rem;">${returnFee} ج.م</span>
+              </div>
+
+              <div style="margin-top:12px;">
                 ${actionBtns}
               </div>
-            </div>
-          </div>
-        `;
-      });
-    }
 
-    container.innerHTML = html;
+              ${timestampsHtml}
+            </div>
+          `;
+        });
+        myContainer.innerHTML = myHtml;
+      }
+    }
   } catch (err) {
     console.error('❌ خطأ في عرض مرتجعات المندوب:', err);
-    container.innerHTML = `<p style="text-align:center; color:red; padding:20px;">خطأ في تحميل المرتجعات: ${escapeHTML(err.message)}</p>`;
+    if (availContainer) availContainer.innerHTML = `<p style="text-align:center; color:red; padding:20px;">خطأ في تحميل المرتجعات المتاحة: ${escapeHTML(err.message)}</p>`;
+    if (myContainer) myContainer.innerHTML = `<p style="text-align:center; color:red; padding:20px;">خطأ في تحميل مهام الاسترجاع: ${escapeHTML(err.message)}</p>`;
   }
 }
 
@@ -890,6 +1139,8 @@ window.claimReturn = claimReturn;
 window.displaySellerReturns = displaySellerReturns;
 window.displayFounderReturns = displayFounderReturns;
 window.displayDeliveryReturns = displayDeliveryReturns;
+window.deleteDeliveryReturnFromView = deleteDeliveryReturnFromView;
+window.clearCompletedDeliveryReturns = clearCompletedDeliveryReturns;
 window.approveReturnFromUI = approveReturnFromUI;
 window.showRejectReasonModal = showRejectReasonModal;
 window.confirmRejectReturn = confirmRejectReturn;

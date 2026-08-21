@@ -1200,18 +1200,24 @@ function createOrderCardForDelivery(order, isAvailable) {
 function switchDeliveryTab(tab) {
     appState.delivery.currentTab = tab;
     document.querySelectorAll('#deliveryDashboardScreen .seller-tab').forEach((t, i) => {
-        t.classList.toggle('active', (tab === 'available' && i === 0) || (tab === 'my' && i === 1) || (tab === 'returns' && i === 2));
+        t.classList.toggle('active',
+            (tab === 'available' && i === 0) ||
+            (tab === 'my' && i === 1) ||
+            (tab === 'returns_available' && i === 2) ||
+            (tab === 'my_returns' && i === 3)
+        );
     });
     const availTab = document.getElementById('availableOrdersTab');
     if (availTab) availTab.style.display = tab === 'available' ? 'block' : 'none';
     const myTab = document.getElementById('myOrdersTab');
     if (myTab) myTab.style.display = tab === 'my' ? 'block' : 'none';
-    const returnsTab = document.getElementById('deliveryReturnsTab');
-    if (returnsTab) {
-        returnsTab.style.display = tab === 'returns' ? 'block' : 'none';
-        if (tab === 'returns' && typeof displayDeliveryReturns === 'function') {
-            displayDeliveryReturns();
-        }
+    const availReturnsTab = document.getElementById('availableReturnsTab');
+    if (availReturnsTab) availReturnsTab.style.display = tab === 'returns_available' ? 'block' : 'none';
+    const myReturnsTab = document.getElementById('myReturnsTab');
+    if (myReturnsTab) myReturnsTab.style.display = tab === 'my_returns' ? 'block' : 'none';
+
+    if ((tab === 'returns_available' || tab === 'my_returns') && typeof displayDeliveryReturns === 'function') {
+        displayDeliveryReturns();
     }
 }
 

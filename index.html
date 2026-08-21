@@ -545,19 +545,28 @@
             </div>
         </div>
         <div class="delivery-stats">
-            <div class="stat-card"><div class="stat-value" id="availableOrdersCount">0</div><div class="stat-label">طلبات متاحة</div></div>
-            <div class="stat-card"><div class="stat-value" id="myOrdersCount">0</div><div class="stat-label">طلباتي</div></div>
-            <div class="stat-card"><div class="stat-value" id="deliveryReturnsCount">0</div><div class="stat-label">مهام الاسترجاع</div></div>
+            <div class="stat-card" onclick="switchDeliveryTab('available')"><div class="stat-value" id="availableOrdersCount">0</div><div class="stat-label">طلبات متاحة</div></div>
+            <div class="stat-card" onclick="switchDeliveryTab('my')"><div class="stat-value" id="myOrdersCount">0</div><div class="stat-label">طلباتي</div></div>
+            <div class="stat-card" onclick="switchDeliveryTab('returns_available')"><div class="stat-value" id="availableReturnsCount">0</div><div class="stat-label">مرتجعات متاحة</div></div>
+            <div class="stat-card" onclick="switchDeliveryTab('my_returns')"><div class="stat-value" id="myReturnsCount">0</div><div class="stat-label">مهام استرجاعي</div></div>
         </div>
-        <div class="seller-tabs">
+        <div class="seller-tabs" style="overflow-x:auto; white-space:nowrap;">
             <div class="seller-tab active" onclick="switchDeliveryTab('available')"><i class="fas fa-list"></i> طلبات متاحة</div>
             <div class="seller-tab" onclick="switchDeliveryTab('my')"><i class="fas fa-truck"></i> طلباتي</div>
-            <div class="seller-tab" onclick="switchDeliveryTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</div>
+            <div class="seller-tab" onclick="switchDeliveryTab('returns_available')"><i class="fas fa-box-open"></i> مرتجعات متاحة (<span id="availableReturnsTabCount">0</span>)</div>
+            <div class="seller-tab" onclick="switchDeliveryTab('my_returns')"><i class="fas fa-undo-alt"></i> مهام الاسترجاع الخاصة بي (<span id="myReturnsTabCount">0</span>)</div>
         </div>
         <div class="seller-content">
             <div id="availableOrdersTab"><div class="orders-list" id="availableOrdersList"></div></div>
             <div id="myOrdersTab" style="display:none;"><div class="orders-list" id="myDeliveryOrdersList"></div></div>
-            <div id="deliveryReturnsTab" style="display:none;"><div class="orders-list" id="deliveryReturnsList"></div></div>
+            <div id="availableReturnsTab" style="display:none;"><div class="orders-list" id="availableReturnsList"></div></div>
+            <div id="myReturnsTab" style="display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:0 5px; flex-wrap:wrap; gap:8px;">
+                    <span style="font-weight:bold; color:#2e7d32; font-size:1rem;"><i class="fas fa-tasks"></i> مهام الاسترجاع المستلمة</span>
+                    <button class="remove-btn" onclick="clearCompletedDeliveryReturns()" style="width:auto; padding:6px 14px; font-size:0.85rem; border-radius:8px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="مسح المرتجعات المكتملة من القائمة"><i class="fas fa-trash-alt"></i> مسح المهام المكتملة</button>
+                </div>
+                <div class="orders-list" id="myDeliveryReturnsList"></div>
+            </div>
         </div>
     </div>
 
