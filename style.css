@@ -628,10 +628,10 @@ body {
     border: var(--border-gold);
     flex-shrink: 0;
 }
-.user-avatar img { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: cover; 
+.user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
 }
 
@@ -757,10 +757,10 @@ body {
     position: relative;
     overflow: hidden;
 }
-.product-image img { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: cover; 
+.product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
 }
 .product-tag {
@@ -1918,10 +1918,10 @@ body {
     cursor: pointer;
     position: relative;
 }
-.profile-avatar img { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: cover; 
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     display: block;
 }
 .edit-avatar-icon {
@@ -2100,6 +2100,91 @@ body {
 .order-status.in_delivery { background: #ff9800; color: #fff; }
 .order-status.delivered { background: #4caf50; color: #fff; }
 .order-status.cancelled { background: #f44336; color: #fff; }
+
+/* ===================== الخط الزمني للطلب (Timeline) ===================== */
+.timeline-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+}
+.timeline-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    padding: 6px 0;
+}
+/* الخط الرابط بين الخطوات */
+.timeline-step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    right: 17px;
+    top: 34px;
+    bottom: -6px;
+    width: 2px;
+    background: var(--gold, #d4af37);
+    opacity: 0.5;
+}
+.timeline-dot {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    z-index: 1;
+}
+.timeline-step.done .timeline-dot {
+    background: #4caf50;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(76, 175, 80, 0.4);
+}
+.timeline-step.current .timeline-dot {
+    background: #ff9800;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.5);
+    animation: timelinePulse 1.5s ease-in-out infinite;
+}
+.timeline-step.cancelled .timeline-dot {
+    background: #f44336;
+    color: #fff;
+}
+@keyframes timelinePulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.5); }
+    50% { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(255, 152, 0, 0); }
+}
+.timeline-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #2e2e2e;
+}
+.timeline-step.done .timeline-label { color: #2e7d32; }
+.timeline-step.current .timeline-label { color: #e65100; }
+.timeline-step.cancelled .timeline-label { color: #c62828; }
+.timeline-now {
+    display: inline-block;
+    background: #ff9800;
+    color: #fff;
+    font-size: 0.68rem;
+    padding: 1px 8px;
+    border-radius: 12px;
+    margin-right: 6px;
+    font-weight: 700;
+}
+.timeline-next {
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #888;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 .order-product {
     display: flex;
     align-items: center;

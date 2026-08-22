@@ -392,25 +392,72 @@ async function cancelOrder(orderId) {
 }
 
 // ========== حذف طلب من قائمة الطلبات ==========
-function deleteBuyerOrder(orderId) {
-    if (!confirm('هل أنت متأكد من حذف هذا الطلب من القائمة؟')) return;
+async function deleteBuyerOrder(orderId) {
+    if (!confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) return;
+    showLoading(true);
+    try {
+        // محاولة الحذف الحقيقي من قاعدة البيانات
+        const { data: deleted, error: deleteError } = await supabaseClient
+            .from('orders')
+            .delete()
+            .eq('id', orderId)
+            .select()
+            .maybeSingle();
 
-    // إزالة الطلب من المصفوفة المحلية
-    if (appState.buyerOrders) {
-        appState.buyerOrders = appState.buyerOrders.filter(o => o.id !== orderId);
+        if (deleteError) throw deleteError;
+
+        if (deleted) {
+            console.log(`✅ [deleteBuyerOrder] Order ${orderId} deleted from database`);
+            showToast('تم حذف الطلب نهائياً', 'success');
+        } else {
+            // الصلاحيات (RLS) تمنع الحذف → نحفظ الإخفاء بشكل دائم محلياً
+            console.warn(`⚠️ [deleteBuyerOrder] Delete blocked by RLS, hiding locally for order ${orderId}`);
+            hideOrderLocally(orderId);
+            showToast('تم حذف الطلب من قائمتك', 'success');
+        }
+
+        // إزالة الطلب من المصفوفة المحلية وتحديث العرض
+        if (appState.buyerOrders) {
+            appState.buyerOrders = appState.buyerOrders.filter(o => o.id !== orderId);
+        }
+
+        // تحديث عداد الطلبات في الملف الشخصي
+        const profileOrdersCountEl = document.getElementById('profileOrdersCount');
+        if (profileOrdersCountEl && appState.buyerOrders) {
+            profileOrdersCountEl.textContent = appState.buyerOrders.length;
+        }
+
+        renderFilteredOrders();
+
+        // إذا لم يعد هناك طلبات، عرض رسالة "لا توجد طلبات"
+        if (!appState.buyerOrders || appState.buyerOrders.length === 0) {
+            const container = document.getElementById('buyerOrdersList');
+            const emptyMsg = document.getElementById('ordersEmptyMessage');
+            if (container) container.innerHTML = '';
+            if (emptyMsg) emptyMsg.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('❌ [deleteBuyerOrder] Error:', err);
+        showToast(err.message || 'حدث خطأ أثناء حذف الطلب', 'error');
+    } finally {
+        showLoading(false);
     }
+}
 
-    // إعادة عرض الطلبات المفلترة
-    renderFilteredOrders();
-    showToast('تم حذف الطلب من القائمة', 'success');
+// ========== إخفاء الطلب محلياً بشكل دائم (عند منع الحذف) ==========
+function hideOrderLocally(orderId) {
+    try {
+        const hidden = JSON.parse(localStorage.getItem('msaar_hidden_orders') || '[]');
+        if (!hidden.includes(orderId)) hidden.push(orderId);
+        localStorage.setItem('msaar_hidden_orders', JSON.stringify(hidden));
+    } catch (e) { console.warn('تعذر حفظ الإخفاء', e); }
+}
 
-    // إذا لم يعد هناك طلبات، عرض رسالة "لا توجد طلبات"
-    if (!appState.buyerOrders || appState.buyerOrders.length === 0) {
-        const container = document.getElementById('buyerOrdersList');
-        const emptyMsg = document.getElementById('ordersEmptyMessage');
-        if (container) container.innerHTML = '';
-        if (emptyMsg) emptyMsg.style.display = 'block';
-    }
+// ========== جلب الطلبات مع استبعاد المخفيين ==========
+function getVisibleOrders(orders) {
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem('msaar_hidden_orders') || '[]'); } catch (e) {}
+    return orders.filter(o => !hidden.includes(o.id));
 }
 
 function getStatusText(status) {
@@ -429,22 +476,47 @@ function getStatusText(status) {
 
 function generateTimeline(currentStatus) {
     const steps = [
-        { key: 'pending', label: 'تم الطلب' },
-        { key: 'confirmed', label: 'تم التأكيد' },
-        { key: 'prepared', label: 'تم التجهيز' },
-        { key: 'picked_up', label: 'استلمه المندوب' },
-        { key: 'picked_up_from_seller', label: 'استلم من البائع' },
-        { key: 'in_delivery', label: 'في الطريق' },
-        { key: 'delivered', label: 'تم التوصيل' }
+        { key: 'pending', label: 'تم الطلب', icon: 'fa-clipboard-list' },
+        { key: 'confirmed', label: 'تم التأكيد', icon: 'fa-check' },
+        { key: 'prepared', label: 'تم التجهيز', icon: 'fa-box' },
+        { key: 'picked_up', label: 'استلمه المندوب', icon: 'fa-motorcycle' },
+        { key: 'picked_up_from_seller', label: 'استلم من البائع', icon: 'fa-hand-holding' },
+        { key: 'in_delivery', label: 'في الطريق', icon: 'fa-truck' },
+        { key: 'delivered', label: 'تم التوصيل', icon: 'fa-house' }
     ];
+
+    // في حالة الإلغاء نعرض خطوة واحدة حمراء فقط
+    if (currentStatus === 'cancelled') {
+        return `<div class="timeline-steps">
+            <div class="timeline-step cancelled">
+                <div class="timeline-dot"><i class="fas fa-times"></i></div>
+                <div class="timeline-label">تم إلغاء الطلب</div>
+            </div>
+        </div>`;
+    }
+
     const statusIndex = steps.findIndex(s => s.key === currentStatus);
+    const effectiveIndex = statusIndex === -1 ? 0 : statusIndex;
+
+    // عرض الخطوات التي حدثت فعلاً فقط (وحدة وحدة) + الخطوة الحالية بنبض
     let html = '<div class="timeline-steps">';
     steps.forEach((step, idx) => {
-        let color = '#ccc';
-        if (idx <= statusIndex) color = '#4caf50';
-        if (idx === statusIndex && currentStatus !== 'delivered' && currentStatus !== 'cancelled') color = '#ff9800';
-        html += `<div class="timeline-step"><div class="timeline-dot" style="background:${color};"></div><div class="timeline-label">${step.label}</div></div>`;
+        if (idx > effectiveIndex) return; // الخطوات التي لم تحدث بعد لا تظهر
+        const isCurrent = idx === effectiveIndex && currentStatus !== 'delivered';
+        const state = isCurrent ? 'current' : 'done';
+        const icon = isCurrent ? `<i class="fas ${step.icon}"></i>` : '<i class="fas fa-check"></i>';
+        const label = isCurrent ? `${step.label} <span class="timeline-now">الآن</span>` : step.label;
+        html += `<div class="timeline-step ${state}">
+            <div class="timeline-dot">${icon}</div>
+            <div class="timeline-label">${label}</div>
+        </div>`;
     });
+
+    // تلميح بالخطوة القادمة (رمادي خفيف)
+    const next = steps[effectiveIndex + 1];
+    if (next) {
+        html += `<div class="timeline-next"><i class="fas fa-hourglass-half"></i> في انتظار: ${next.label}</div>`;
+    }
     html += '</div>';
     return html;
 }
@@ -490,7 +562,7 @@ function renderFilteredOrders() {
     const { status, query } = appState.ordersFilter;
 
     // تصفية حسب الحالة
-    let filtered = appState.buyerOrders || [];
+    let filtered = getVisibleOrders(appState.buyerOrders || []);
     if (status !== 'all') {
         filtered = filtered.filter(o => o.status === status);
     }
@@ -660,6 +732,10 @@ function createBuyerOrderCard(order) {
     card.innerHTML = `<div class="order-header"><span class="order-id">#${order.id.slice(0,8)}</span><span class="order-status ${order.status}">${getStatusText(order.status)}</span></div>
         <div>${escapeHTML(product.name)} - ${order.quantity} × ${((order.total_price - (order.delivery_fee || 0)) / order.quantity).toFixed(0)} ج.م</div>
         <div>رسوم التوصيل: ${order.delivery_fee || 0} ج.م</div>
+        <div style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--gold, #d4af37); font-weight:800; color:var(--gold, #d4af37); display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fas fa-calculator"></i> الإجمالي</span>
+            <span>${Number(order.total_price || 0).toFixed(0)} ج.م</span>
+        </div>
         <div class="order-timeline" style="margin-top:15px;">${timeline}</div>
         ${returnHtml}
         ${otpDisplay}${deliveryHtml}
@@ -673,8 +749,8 @@ async function loadBuyerOrdersWithTimeline() {
     const container = document.getElementById('buyerOrdersList');
     if (!container) return;
 
-    // تخزين الطلبات في الحالة العامة للتصفية
-    appState.buyerOrders = orders;
+    // تخزين الطلبات في الحالة العامة للتصفية (مع استبعاد المحذوفين/المخفيين)
+    appState.buyerOrders = getVisibleOrders(orders);
 
     // تحديث عداد عدد الطلبات في بطاقة "طلبات" بالملف الشخصي
     const profileOrdersCountEl = document.getElementById('profileOrdersCount');
@@ -1444,6 +1520,8 @@ window.setOrdersFilter = setOrdersFilter;
 window.renderFilteredOrders = renderFilteredOrders;
 window.createBuyerOrderCard = createBuyerOrderCard;
 window.deleteBuyerOrder = deleteBuyerOrder;
+window.hideOrderLocally = hideOrderLocally;
+window.getVisibleOrders = getVisibleOrders;
 window.startReturnTimer = startReturnTimer;
 window.openReturnModal = openReturnModal;
 window.closeReturnModal = closeReturnModal;
