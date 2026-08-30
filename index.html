@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" type="image/x-icon" href="https://i.ibb.co/XktM4crn/1767120438295.png">
@@ -1146,12 +1146,13 @@
     <button class="chatbot-btn" onclick="openChatbot()"><i class="fas fa-robot"></i><span class="chatbot-badge" id="chatbotBadge">3</span></button>
     <div class="chatbot-screen" id="chatbotScreen">
         <div class="chatbot-header">
-            <i class="fas fa-robot"></i><h2>مساعد Misar الذكي</h2>
+            <i class="fas fa-robot"></i><h2>مساعد Misar الذكي <span style="font-size:0.6rem; color:#aaa;">(مؤمن عبر الخادم)</span></h2>
             <button class="founder-btn" onclick="openFounderProfile()" title="صفحة المؤسس"><i class="fas fa-crown"></i><span>مؤسس</span></button>
             <button class="founder-btn" onclick="contactDeveloper()" title="تواصل مع المطور"><i class="fas fa-headset"></i><span>مطور</span></button>
             <button class="close-chatbot" onclick="closeChatbot()"><i class="fas fa-times"></i></button>
         </div>
-        <div class="chat-messages" id="chatMessages"><div class="message bot">مرحباً! أنا مساعد Misar الذكي، كيف يمكنني مساعدتك اليوم؟ 😊</div></div>
+        <div class="chat-messages" id="chatMessages"><div class="message bot">مرحباً! 👋 أنا MISAR AI مساعدك الذكي.
+اسألني عن المنتجات 🛍️ أو طلباتك 📦 أو الخدمات 🧰، أو اختر من الاقتراحات بالأسفل للبدء 😊</div></div>
         <div class="suggestions" id="suggestions">
             <span class="suggestion-chip" onclick="sendSuggestion('ما هي المنتجات المتوفرة؟')">المنتجات المتوفرة</span>
             <span class="suggestion-chip" onclick="sendSuggestion('كيف أشتري منتج؟')">كيف أشتري؟</span>
@@ -1236,6 +1237,7 @@
 
 <!-- ========== ملفات الجافا سكريبت ========== -->
 <script src="js/supabase.js"></script>
+    <script src="js/misar-ai.js"></script>
 <script src="js/admin-dashboard.js"></script>
 <script src="js/admin-couriers.js"></script>
 <script src="js/admin-users.js"></script>

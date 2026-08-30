@@ -4,7 +4,7 @@
 // - يخزن الملفات الأساسية مؤقتاً ليعمل التطبيق بدون إنترنت جزئياً
 // ============================================================
 
-const CACHE_NAME = 'misar-cache-v2';
+const CACHE_NAME = 'misar-cache-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -47,6 +47,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
+  // لا تتدخل في ملفات JS والـ HTML حتى لا تُخدم نسخ قديمة من الكود
+  if (request.destination === 'script' || request.mode === 'navigate') return;
 
   event.respondWith(
     fetch(request)

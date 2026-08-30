@@ -4774,3 +4774,31 @@ body {
 .founder-return-card {
   border-color: var(--gold);
 }
+
+/* ========== تنسيقات شريط البحث في صفحة الطلبات ========== */
+.orders-search-bar .search-container {
+    background: #fff;
+    border: 1.5px solid var(--gold);
+    box-shadow: 0 2px 8px rgba(26,35,126,0.06);
+}
+.orders-search-bar .search-container input {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.orders-search-bar .filter-btn {
+    background: #fff;
+    border-color: rgba(212,175,55,0.5);
+    font-size: 0.8rem;
+    padding: 5px 14px;
+}
+.orders-search-bar .filter-btn.active {
+    background: var(--blue-royal);
+    color: var(--gold);
+    border-color: var(--blue-royal);
+}
+@media (max-width: 480px) {
+    .orders-search-bar .filter-btn {
+        font-size: 0.72rem;
+        padding: 4px 10px;
+    }
+}

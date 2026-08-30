@@ -1619,19 +1619,38 @@ function sendMessage() {
     if (!msg) return;
     addMessage(msg, 'user');
     input.value = '';
-    setTimeout(() => {
-        addMessage(getBotResponse(msg), 'bot');
+    showChatTyping(true);
+    getMisarAiResponse(msg).then(reply => {
+        showChatTyping(false);
+        addMessage(reply, 'bot');
         const messages = document.getElementById('chatMessages');
         if (messages) messages.scrollTop = messages.scrollHeight;
-    }, 400);
+    });
+}
+function showChatTyping(show) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    let el = document.getElementById('misarTyping');
+    if (show && !el) {
+        el = document.createElement('div');
+        el.id = 'misarTyping';
+        el.className = 'message bot';
+        el.textContent = 'MISAR AI يكتب...';
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
+    } else if (!show && el) {
+        el.remove();
+    }
 }
 function sendSuggestion(text) {
     addMessage(text, 'user');
-    setTimeout(() => {
-        addMessage(getBotResponse(text), 'bot');
+    showChatTyping(true);
+    getMisarAiResponse(text).then(reply => {
+        showChatTyping(false);
+        addMessage(reply, 'bot');
         const messages = document.getElementById('chatMessages');
         if (messages) messages.scrollTop = messages.scrollHeight;
-    }, 400);
+    });
 }
 function addMessage(text, sender) {
     const container = document.getElementById('chatMessages');
