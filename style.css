@@ -4802,3 +4802,17 @@ body {
         padding: 4px 10px;
     }
 }
+
+/* ====== نظام المتصلين أون لاين ====== */
+.online-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 600; color: #fff;
+}
+.online-badge.guest    { background: #78909c; }
+.online-badge.client   { background: #1e88e5; }
+.online-badge.seller   { background: #fb8c00; }
+.online-badge.delivery { background: #8e24aa; }
+.online-badge.founder  { background: linear-gradient(135deg, #d4af37, #b8860b); }
+
+#tab-online .stat-box .stat-label i { color: #2e7d32; }
+#onlineUsersTable td { vertical-align: middle; }

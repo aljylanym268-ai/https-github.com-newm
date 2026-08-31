@@ -633,6 +633,7 @@
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
             <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
+            <button class="founder-tab" data-tab="online" onclick="switchFounderTab('online')"><i class="fas fa-signal"></i> المتصلون الآن</button>
         </div>
 
         <!-- محتوى التبويبات -->
@@ -648,7 +649,7 @@
                 <div class="founder-dashboard-card" style="margin-top:20px;">
                     <div class="founder-dashboard-title"><i class="fas fa-crown"></i> التحكم بصفحة المؤسس</div>
                     <div class="toggle-switch"><span><i class="fas fa-eye-slash"></i> إظهار/إخفاء الصفحة (للجميع)</span><label class="switch"><input type="checkbox" id="toggleFounderPage"><span class="slider"></span></label></div>
-                    <div class="stats-row"><div class="stat-box"><div class="stat-number" id="founderViewsCount">0</div><div class="stat-label">عدد المشاهدات</div></div><div class="stat-box"><div class="stat-number" id="founderSharesTotal">0</div><div class="stat-label">إجمالي المشاركات</div></div></div>
+                    <div class="stats-row"><div class="stat-box"><div class="stat-number" id="founderViewsCount">0</div><div class="stat-label">عدد المشاهدات</div></div><div class="stat-box"><div class="stat-number" id="founderSharesTotal">0</div><div class="stat-label">إجمالي المشاركات</div></div><div class="stat-box"><div class="stat-number" id="totalVisitsCount">0</div><div class="stat-label">إجمالي زيارات الموقع</div></div></div>
                     <button class="refresh-stats-btn" onclick="refreshFounderStats()"><i class="fas fa-sync-alt"></i> تحديث الإحصائيات</button>
                 </div>
             </div>
@@ -887,6 +888,25 @@
             <!-- تبويب المرتجعات للمؤسس -->
             <div id="tab-returns" class="founder-tab-panel">
                 <div id="founderReturnsList"></div>
+            </div>
+
+            <!-- تبويب المتصلون أون لاين -->
+            <div id="tab-online" class="founder-tab-panel">
+                <div class="stats-row" style="margin-bottom:20px;">
+                    <div class="stat-box"><div class="stat-number" id="onlineUsersCount" style="color:#2e7d32;">0</div><div class="stat-label"><i class="fas fa-signal"></i> متصل الآن</div></div>
+                    <div class="stat-box"><div class="stat-number" id="onlineMembersCount">0</div><div class="stat-label">مسجلين</div></div>
+                    <div class="stat-box"><div class="stat-number" id="onlineGuestsCount">0</div><div class="stat-label">زوار (ضيوف)</div></div>
+                    <div class="stat-box"><div class="stat-number" id="totalVisitsCount2">0</div><div class="stat-label">إجمالي الزيارات</div></div>
+                </div>
+                <div class="founder-card">
+                    <h4><i class="fas fa-users"></i> قائمة المتصلين أون لاين (تحديث لحظي)</h4>
+                    <table class="founder-table" id="onlineUsersTable">
+                        <thead><tr><th>الاسم</th><th>نوع الحساب</th><th>الصفحة</th><th>مدة الاتصال</th></tr></thead>
+                        <tbody id="onlineUsersTableBody">
+                            <tr><td colspan="4" style="text-align:center;">جاري التحميل...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
         </div> <!-- end founder-tab-content -->
@@ -1237,6 +1257,7 @@
 
 <!-- ========== ملفات الجافا سكريبت ========== -->
 <script src="js/supabase.js"></script>
+    <script src="js/online-users.js"></script>
     <script src="js/misar-ai.js"></script>
 <script src="js/admin-dashboard.js"></script>
 <script src="js/admin-couriers.js"></script>
@@ -1298,6 +1319,12 @@ if (session) {
         loadServices();
         loadCart();
         await updateCartBadgeFromDB();
+
+        // 3.1 تتبع المتصلين أون لاين + عدّاد الزوار
+        try {
+            trackSiteVisit();
+            initOnlineTracking();
+        } catch (e) { console.warn('online tracking error:', e); }
 
         // 3.2 تسجيل Service Worker لتفعيل الإشعارات على الهاتف (PWA)
         if ('serviceWorker' in navigator) {

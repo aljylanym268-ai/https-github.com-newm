@@ -29,7 +29,14 @@ async function getFounderStats() {
         const totalServices = appState.services?.length || 0;
         const totalStores = sellers;
 
+        // عدد المتصلين الآن (من Presence إن كان متاحاً)
+        let onlineNow = 0;
+        try {
+            if (window.presenceChannel) onlineNow = Object.values(window.presenceChannel.presenceState()).flat().length;
+        } catch(e) {}
+
         return {
+            onlineNow,
             totalUsers,
             clients,
             sellers,
@@ -56,6 +63,7 @@ function renderStatsGrid(stats) {
     const container = document.getElementById('founderStatsGrid');
     if (!container) return;
     const items = [
+        { icon: 'fas fa-signal', label: 'متصل الآن', value: stats.onlineNow || 0 },
         { icon: 'fas fa-users', label: 'إجمالي المستخدمين', value: stats.totalUsers || 0 },
         { icon: 'fas fa-user', label: 'العملاء', value: stats.clients || 0 },
         { icon: 'fas fa-store', label: 'البائعين', value: stats.sellers || 0 },
@@ -131,6 +139,7 @@ window.switchFounderTab = function (tabId) {
         case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
         case 'settings': loadSettingsForm(); break;
         case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
+        case 'online': if (typeof initFounderOnlineTab === 'function') initFounderOnlineTab(); break;
     }
 };
 
