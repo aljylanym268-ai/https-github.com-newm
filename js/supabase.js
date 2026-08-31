@@ -1115,7 +1115,8 @@ async function loadGlobalFounderVisibility() {
     } catch (error) {
         console.warn('⚠️ فشل تحميل إعدادات المؤسس من DB، استخدام localStorage:', error);
         const saved = localStorage.getItem('founder_page_visible');
-        appState.founderPageVisible = saved !== null ? saved === 'true' : true;
+        // احتياطي آمن: لو مفيش قيمة محفوظة، اعتبرها مخفية (منع فتحها بالغلط)
+        appState.founderPageVisible = saved !== null ? saved === 'true' : false;
     }
 
     const toggleSwitch = document.getElementById('toggleFounderPage');
@@ -1284,7 +1285,12 @@ async function shareFounderPage(method) {
     trackShare(method);
 }
 
-function openFounderProfile() {
+async function openFounderProfile() {
+    // مهم: تحميل حالة الرؤية مباشرة من قاعدة البيانات قبل الفتح
+    // (حتى لا تُفتح الصفحة بالقيمة الافتراضية قبل تحميل الإعداد)
+    if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+        await loadGlobalFounderVisibility();
+    }
     if (!appState.founderPageVisible) {
         showToast('⛔ صفحة المؤسس غير متاحة حالياً', 'warning');
         return;
