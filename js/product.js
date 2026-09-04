@@ -501,7 +501,7 @@ function openImageModalFromReview(imageSrc) {
 function setupSwipe() {
     const container = document.getElementById('mainImageContainer');
     if (!container) return;
-    
+
     let startX = 0;
     let isDragging = false;
     let currentTranslateX = 0;
@@ -802,13 +802,18 @@ function openDirectCheckout() {
     }
 
     // تعبئة الحقول تلقائياً من بيانات المستخدم
-    const userData = appState.userData || {};
-    document.getElementById('directName').value = userData.name || '';
-    document.getElementById('directPhone').value = userData.phone || '';
-    document.getElementById('directAddress').value = userData.address || '';
-    document.getElementById('directGovernorate').value = userData.governorate || 'قنا';
-    document.getElementById('directCity').value = userData.center || '';
-    document.getElementById('directNotes').value = '';
+    if (typeof fillCheckoutFormFromUserData === 'function') {
+        fillCheckoutFormFromUserData('direct');
+    } else {
+        const userData = appState.userData || {};
+        document.getElementById('directName').value = userData.name || '';
+        document.getElementById('directPhone').value = userData.phone || '';
+        document.getElementById('directAddress').value = userData.address || '';
+        document.getElementById('directGovernorate').value = userData.governorate || 'قنا';
+        document.getElementById('directCity').value = userData.center || '';
+        document.getElementById('directNotes').value = '';
+    }
+    if (typeof setupCheckoutLocationSelectors === 'function') setupCheckoutLocationSelectors('direct');
 
     // عرض المودال
     document.getElementById('directCheckoutModal').classList.add('active');
@@ -822,9 +827,15 @@ async function confirmDirectOrder() {
     const city = document.getElementById('directCity').value.trim();
     const notes = document.getElementById('directNotes').value.trim();
 
-    if (!name || !phone || !address || !city) {
+    if (!name || !phone || !address || !governorate || !city) {
         showToast('يرجى ملء جميع الحقول المطلوبة', 'warning');
         return;
+    }
+    const phoneRegex = /^01[0125][0-9]{8}$/;
+    if (!phoneRegex.test(phone)) { showToast('رقم الهاتف غير صحيح', 'error'); return; }
+
+    if (typeof saveAddressAsDefaultIfRequested === 'function') {
+        await saveAddressAsDefaultIfRequested('direct', governorate, city, address, phone);
     }
 
     showLoading(true);

@@ -263,6 +263,8 @@ function openCheckout() {
         showToast('يرجى تحديد منتج واحد على الأقل', 'warning');
         return;
     }
+    if (typeof fillCheckoutFormFromUserData === 'function') fillCheckoutFormFromUserData('checkout');
+    if (typeof setupCheckoutLocationSelectors === 'function') setupCheckoutLocationSelectors('checkout');
     document.getElementById('checkoutModal').classList.add('active');
 }
 function closeCheckoutModal() { document.getElementById('checkoutModal').classList.remove('active'); }
@@ -298,11 +300,14 @@ async function confirmOrder() {
     const name = document.getElementById('checkoutName').value.trim();
     const phone = document.getElementById('checkoutPhone').value.trim();
     const address = document.getElementById('checkoutAddress').value.trim();
-    if (!name || !phone || !address) { showToast('يرجى ملء جميع الحقول', 'warning'); return; }
-    let center = '';
-    if (appState.userData.center) center = appState.userData.center;
-    else if (appState.location && appState.location.center) center = appState.location.center;
-    else { const match = address.match(/(قنا|نقادة|قوص|دشنا|فرشوط|أبو تشت|نجع حمادي|قفط)/i); if (match) center = match[0]; else center = 'قنا'; }
+    const governorate = document.getElementById('checkoutGovernorate')?.value || '';
+    const center = document.getElementById('checkoutCenter')?.value || '';
+    if (!name || !phone || !address || !governorate || !center) { showToast('يرجى ملء جميع الحقول المطلوبة', 'warning'); return; }
+    const phoneRegex = /^01[0125][0-9]{8}$/;
+    if (!phoneRegex.test(phone)) { showToast('رقم الهاتف غير صحيح', 'error'); return; }
+    if (typeof saveAddressAsDefaultIfRequested === 'function') {
+        await saveAddressAsDefaultIfRequested('checkout', governorate, center, address, phone);
+    }
     const deliveryFee = 20;
     showLoading(true);
     try {

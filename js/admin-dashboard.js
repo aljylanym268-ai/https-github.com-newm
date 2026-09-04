@@ -138,6 +138,7 @@ window.switchFounderTab = function (tabId) {
         case 'logs': loadLogsTable(); break;
         case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
         case 'settings': loadSettingsForm(); break;
+        case 'locations': if (typeof initFounderLocationsAdmin === 'function') initFounderLocationsAdmin(); break;
         case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
         case 'online': if (typeof initFounderOnlineTab === 'function') initFounderOnlineTab(); break;
     }

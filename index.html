@@ -49,12 +49,6 @@
                         <option value="قفط">قفط</option>
                     </select>
                 </div>
-                <div class="input-group">
-                    <label class="input-label">القرية</label>
-                    <select class="location-select" id="villageSelect">
-                        <option value="">اختر القرية</option>
-                    </select>
-                </div>
                 <button class="location-btn" id="saveLocationBtn">
                     <i class="fas fa-check-circle"></i> حفظ وبدء الاستخدام
                 </button>
@@ -141,48 +135,50 @@
                 <button class="google-btn" id="googleRegisterBtn"><i class="fab fa-google"></i> التسجيل عبر Google</button>
                 <div style="text-align:center; margin:15px 0; color:#aaa;">أو أنشئ حساباً بالبريد الإلكتروني</div>
                 <div class="input-group">
-                    <label class="input-label">المحافظة</label>
-                    <select class="location-select" id="registerGovernorate">
-                        <option value="قنا" selected>قنا</option>
+                    <label class="input-label">المحافظة *</label>
+                    <select class="location-select" id="registerGovernorate" required>
+                        <option value="">اختر المحافظة</option>
                     </select>
                 </div>
-                <div id="deliveryCenterField" style="display:none;">
-                    <div class="input-group">
-                        <label class="input-label">المركز (للمندوبين)</label>
-                        <select id="deliveryCenterSelect" class="input-field">
-                            <option value="">اختر المركز</option>
-                            <option value="قنا">قنا</option>
-                            <option value="نقادة">نقادة</option>
-                            <option value="قوص">قوص</option>
-                            <option value="دشنا">دشنا</option>
-                            <option value="فرشوط">فرشوط</option>
-                            <option value="أبو تشت">أبو تشت</option>
-                            <option value="نجع حمادي">نجع حمادي</option>
-                            <option value="قفط">قفط</option>
-                        </select>
-                    </div>
+                <div class="input-group">
+                    <label class="input-label">المركز / المدينة *</label>
+                    <select class="location-select" id="registerCenter" required>
+                        <option value="">اختر المحافظة أولاً</option>
+                    </select>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">الاسم (اختياري)</label>
-                    <input type="text" class="input-field" id="registerName" placeholder="محمد أحمد">
+                    <label class="input-label">الاسم *</label>
+                    <input type="text" class="input-field" id="registerName" placeholder="محمد أحمد" required>
                 </div>
                 <div class="input-group">
-                    <label class="input-label">البريد الإلكتروني</label>
-                    <input type="email" class="input-field" id="registerEmail" placeholder="example@email.com">
+                    <label class="input-label">رقم الهاتف *</label>
+                    <input type="tel" class="input-field" id="registerPhone" placeholder="01xxxxxxxxx" inputmode="numeric" maxlength="11" required>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">البريد الإلكتروني *</label>
+                    <input type="email" class="input-field" id="registerEmail" placeholder="example@email.com" required>
                 </div>
                 <div class="input-group password-wrapper">
-                    <label class="input-label">كلمة المرور</label>
-                    <input type="password" class="input-field" id="registerPassword" placeholder="أدخل كلمة المرور">
+                    <label class="input-label">كلمة المرور *</label>
+                    <input type="password" class="input-field" id="registerPassword" placeholder="أدخل كلمة المرور" required>
                     <span class="toggle-password" onclick="togglePasswordVisibility('registerPassword', this)">
                         <i class="fas fa-eye"></i>
                     </span>
                 </div>
                 <div class="input-group password-wrapper">
-                    <label class="input-label">تأكيد كلمة المرور</label>
-                    <input type="password" class="input-field" id="registerConfirmPassword" placeholder="أعد إدخال كلمة المرور">
+                    <label class="input-label">تأكيد كلمة المرور *</label>
+                    <input type="password" class="input-field" id="registerConfirmPassword" placeholder="أعد إدخال كلمة المرور" required>
                     <span class="toggle-password" onclick="togglePasswordVisibility('registerConfirmPassword', this)">
                         <i class="fas fa-eye"></i>
                     </span>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">العنوان بالتفصيل *</label>
+                    <input type="text" class="input-field" id="registerAddress" placeholder="الشارع، رقم المنزل، علامة مميزة..." required>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">ملاحظات العنوان (اختياري)</label>
+                    <input type="text" class="input-field" id="registerAddressNotes" placeholder="أي تفاصيل إضافية عن العنوان...">
                 </div>
                 <button class="login-btn" id="registerBtn"><i class="fas fa-user-plus"></i> إنشاء حساب</button>
                 <div class="login-footer">
@@ -396,7 +392,6 @@
                 <div class="input-group"><label class="input-label">رقم الهاتف</label><input type="tel" class="input-field" id="editPhone" placeholder="أدخل رقم الهاتف"></div>
                 <div class="input-group"><label class="input-label">المحافظة</label><input type="text" class="input-field" id="editGovernorate" value="قنا" disabled></div>
                 <div class="input-group"><label class="input-label">المركز</label><input type="text" class="input-field" id="editCenter" placeholder="اختر المركز أولاً من شاشة الموقع"></div>
-                <div class="input-group"><label class="input-label">القرية</label><input type="text" class="input-field" id="editVillage" placeholder="اختر القرية أولاً من شاشة الموقع"></div>
                 <div id="sellerExtraFields" style="display:none;">
                     <div class="input-group"><label class="input-label">اسم المستخدم (للرابط الشخصي)</label><input type="text" id="editUsername" class="input-field" placeholder="example_name"><small style="color:#666;">سيظهر في رابط متجرك</small></div>
                     <div class="input-group"><label class="input-label">السيرة الذاتية (وصف المتجر)</label><textarea id="editBio" class="input-field" rows="3" placeholder="وصف قصير عن متجرك..."></textarea></div>
@@ -631,6 +626,7 @@
             <button class="founder-tab" data-tab="logs" onclick="switchFounderTab('logs')"><i class="fas fa-history"></i> سجل النشاط</button>
             <button class="founder-tab" data-tab="notifications" onclick="switchFounderTab('notifications')"><i class="fas fa-bell"></i> الإشعارات</button>
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
+            <button class="founder-tab" data-tab="locations" onclick="switchFounderTab('locations')"><i class="fas fa-map-marked-alt"></i> إدارة المواقع</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
             <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
             <button class="founder-tab" data-tab="online" onclick="switchFounderTab('online')"><i class="fas fa-signal"></i> المتصلون الآن</button>
@@ -885,6 +881,33 @@
                 </div>
             </div>
 
+            <!-- تبويب إدارة المواقع (المحافظات والمراكز) -->
+            <div id="tab-locations" class="founder-tab-panel">
+                <div class="founder-card">
+                    <h3><i class="fas fa-map-marked-alt"></i> إدارة المحافظات والمراكز</h3>
+                    <p style="color:#666; font-size:0.9rem;">المحافظة أو المركز المحذوف بيتشال <b>نهائياً</b> من كل القوائم (اختر موقعك، التسجيل، الطلب) — وتقدر تسترجعه في أي وقت.</p>
+                    <div class="input-group">
+                        <label class="input-label">اختر محافظة للتحكم فيها</label>
+                        <select id="locAdminGovSelect" class="input-field" onchange="renderLocAdminCenters()"></select>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                        <button class="founder-btn" style="width:auto; padding:8px 14px;" onclick="toggleLocAdminGov()"><i class="fas fa-power-off"></i> <span id="locAdminGovToggleLabel">حالة المحافظة</span></button>
+                        <button class="remove-btn" style="width:auto; padding:8px 14px;" onclick="deleteLocAdminGov()"><i class="fas fa-trash"></i> <span id="locAdminDeleteGovBtn">حذف المحافظة نهائياً</span></button>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; background:#f0f2f5; padding:10px; border-radius:12px;">
+                        <input type="text" id="locAdminNewGov" class="input-field" style="flex:1; min-width:180px;" placeholder="اسم محافظة جديدة (لإضافة محافظة مش موجودة)">
+                        <button class="founder-btn" style="width:auto; padding:8px 14px;" onclick="addLocAdminGov()"><i class="fas fa-plus"></i> إضافة محافظة</button>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                        <input type="text" id="locAdminNewCenter" class="input-field" style="flex:1; min-width:180px;" placeholder="اسم مركز جديد داخل المحافظة المختارة">
+                        <button class="founder-btn" style="width:auto; padding:8px 14px;" onclick="addLocAdminCenter()"><i class="fas fa-plus"></i> إضافة مركز</button>
+                        <button class="google-btn" style="width:auto; padding:8px 14px;" onclick="restoreLocAdminDefaults()" title="إرجاع كل القوائم لحالتها الأصلية"><i class="fas fa-undo"></i> استرجاع الأصل</button>
+                    </div>
+                    <div id="locAdminCentersList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px;"></div>
+                    <button class="login-btn" onclick="saveLocAdminSettings()" style="margin-top:15px;"><i class="fas fa-save"></i> حفظ التغييرات</button>
+                </div>
+            </div>
+
             <!-- تبويب المرتجعات للمؤسس -->
             <div id="tab-returns" class="founder-tab-panel">
                 <div id="founderReturnsList"></div>
@@ -989,9 +1012,12 @@
     <div id="checkoutModal" class="modal" onclick="if(event.target===this) closeCheckoutModal()">
         <div class="modal-content">
             <h3 style="color:#1a237e; margin-bottom:15px;">إتمام الطلب</h3>
-            <div class="input-group"><label class="input-label">الاسم الكامل</label><input type="text" id="checkoutName" class="input-field" placeholder="أدخل اسمك"></div>
-            <div class="input-group"><label class="input-label">رقم الهاتف</label><input type="tel" id="checkoutPhone" class="input-field" placeholder="أدخل رقم الهاتف"></div>
-            <div class="input-group"><label class="input-label">العنوان</label><textarea id="checkoutAddress" class="input-field" rows="2" placeholder="أدخل العنوان بالتفصيل"></textarea></div>
+            <div class="input-group"><label class="input-label">الاسم الكامل *</label><input type="text" id="checkoutName" class="input-field" placeholder="أدخل اسمك"></div>
+            <div class="input-group"><label class="input-label">رقم الهاتف *</label><input type="tel" id="checkoutPhone" class="input-field" placeholder="أدخل رقم الهاتف" maxlength="11" inputmode="numeric"></div>
+            <div class="input-group"><label class="input-label">المحافظة *</label><select id="checkoutGovernorate" class="input-field"><option value="">اختر المحافظة</option></select></div>
+            <div class="input-group"><label class="input-label">المركز / المدينة *</label><select id="checkoutCenter" class="input-field"><option value="">اختر المدينة</option></select></div>
+            <div class="input-group"><label class="input-label">العنوان بالتفصيل *</label><textarea id="checkoutAddress" class="input-field" rows="2" placeholder="أدخل العنوان بالتفصيل"></textarea></div>
+            <div class="input-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="saveCheckoutAddressAsDefault" style="width:18px;height:18px;"><label class="input-label" for="saveCheckoutAddressAsDefault" style="margin:0;">حفظ هذا العنوان كعنواني الأساسي</label></div>
             <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="confirmOrder()">تأكيد الطلب</button><button class="google-btn" style="flex:1;" onclick="closeCheckoutModal()">إلغاء</button></div>
         </div>
     </div>
@@ -1020,11 +1046,12 @@
         <div class="modal-content">
             <h3 style="color:#1a237e; margin-bottom:15px;"><i class="fas fa-bolt" style="color:#D4AF37;"></i> شراء الآن</h3>
             <div class="input-group"><label class="input-label">الاسم الكامل *</label><input type="text" id="directName" class="input-field" placeholder="أدخل اسمك"></div>
-            <div class="input-group"><label class="input-label">رقم الهاتف *</label><input type="tel" id="directPhone" class="input-field" placeholder="أدخل رقم الهاتف"></div>
-            <div class="input-group"><label class="input-label">المحافظة *</label><select id="directGovernorate" class="input-field"><option value="قنا">قنا</option><option value="الأقصر">الأقصر</option><option value="أسوان">أسوان</option><option value="سوهاج">سوهاج</option><option value="أسيوط">أسيوط</option><option value="البحر الأحمر">البحر الأحمر</option></select></div>
-            <div class="input-group"><label class="input-label">المدينة / المركز *</label><input type="text" id="directCity" class="input-field" placeholder="مثال: قنا، نقادة، ..."></div>
+            <div class="input-group"><label class="input-label">رقم الهاتف *</label><input type="tel" id="directPhone" class="input-field" placeholder="أدخل رقم الهاتف" maxlength="11" inputmode="numeric"></div>
+            <div class="input-group"><label class="input-label">المحافظة *</label><select id="directGovernorate" class="input-field"><option value="">اختر المحافظة</option></select></div>
+            <div class="input-group"><label class="input-label">المدينة / المركز *</label><select id="directCity" class="input-field"><option value="">اختر المدينة</option></select></div>
             <div class="input-group"><label class="input-label">العنوان بالتفصيل *</label><textarea id="directAddress" class="input-field" rows="2" placeholder="العنوان الكامل (شارع، منزل، ...)"></textarea></div>
             <div class="input-group"><label class="input-label">ملاحظات (اختياري)</label><textarea id="directNotes" class="input-field" rows="2" placeholder="أي ملاحظات إضافية..."></textarea></div>
+            <div class="input-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="saveAddressAsDefault" style="width:18px;height:18px;"><label class="input-label" for="saveAddressAsDefault" style="margin:0;">حفظ هذا العنوان كعنواني الأساسي</label></div>
             <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1; background: #D4AF37; color:#1a237e;" onclick="confirmDirectOrder()"><i class="fas fa-check-circle"></i> تأكيد الطلب</button><button class="google-btn" style="flex:1;" onclick="closeDirectCheckout()">إلغاء</button></div>
         </div>
     </div>
@@ -1270,6 +1297,7 @@
 <script src="js/admin-logs.js"></script>
 <script src="js/admin-settings.js"></script>
 <script src="js/admin-banners.js"></script>
+<script src="js/admin-locations.js"></script>
 <script src="js/banners.js"></script>
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>
@@ -1521,28 +1549,19 @@ if (session) {
 
         document.getElementById('saveLocationBtn')?.addEventListener('click', saveLocation);
 
-        // تحديث القرى عند تغيير المركز
-        const centerSelect = document.getElementById('centerSelect');
-        const villageSelect = document.getElementById('villageSelect');
-        if (centerSelect && villageSelect) {
-            centerSelect.addEventListener('change', function() {
-                const center = this.value;
-                if (!center) {
-                    villageSelect.innerHTML = '<option value="">اختر القرية</option>';
-                    villageSelect.disabled = true;
-                    return;
-                }
-                villageSelect.disabled = false;
-                loadVillagesForCenter(center, '');
+        // تعبئة المحافظة/المركز في شاشة الموقع حسب إعدادات المؤسس
+        (async function initLocationScreenFromFounderSettings() {
+            const govSel = document.getElementById('governorateSelect');
+            const centerSel = document.getElementById('centerSelect');
+            if (!govSel || !centerSel) return;
+            await populateGovernorateSelect(govSel, appState.location?.governorate || 'قنا');
+            const gov = govSel.value || 'قنا';
+            await populateCenterSelect(centerSel, gov, appState.location?.center || '');
+            govSel.disabled = false;
+            govSel.addEventListener('change', async () => {
+                await populateCenterSelect(centerSel, govSel.value);
             });
-            if (appState.location?.center) {
-                centerSelect.value = appState.location.center;
-                villageSelect.disabled = false;
-                loadVillagesForCenter(appState.location.center, appState.location.village || '');
-            } else {
-                villageSelect.disabled = true;
-            }
-        }
+        })();
 
         // إعداد نجوم التقييم
         document.querySelectorAll('.star').forEach(star => {
@@ -1615,6 +1634,7 @@ if (session) {
             case 'reports': if (typeof loadReportsTable === 'function') loadReportsTable(); break;
 case 'logs': if (typeof loadLogsTable === 'function') loadLogsTable(); break;
             case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
+            case 'locations': if (typeof initFounderLocationsAdmin === 'function') initFounderLocationsAdmin(); break;
             case 'settings': if (typeof loadSettingsForm === 'function') loadSettingsForm(); break;
             case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
         }

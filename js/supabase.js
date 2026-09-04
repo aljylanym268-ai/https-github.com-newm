@@ -3,7 +3,42 @@ const SUPABASE_URL = 'https://wwojtkxwmgkrudtevbcb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Rqi9qMZgIrslWSDc61gG-A_QGQxcvNr';
 const { createClient } = supabase;
 
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+    }
+});
+
+// ========== تنظيف رابط العودة بعد تسجيل الدخول عبر Google (OAuth) ==========
+// يزيل كود PKCE / التوكنات / أخطاء OAuth من الرابط حتى لا يتسبب تحديث الصفحة
+// في خطأ "code verifier" أو "invalid code" ويضمن عدم تعلق شاشة التحميل.
+(function cleanupOAuthUrl() {
+    try {
+        const url = new URL(window.location.href);
+        const hash = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const oauthError = url.searchParams.get('error') || hash.get('error');
+        const hadAuthData = url.searchParams.has('code') || hash.has('access_token') || !!oauthError;
+        if (oauthError) {
+            const desc = url.searchParams.get('error_description') || hash.get('error_description') || oauthError;
+            console.warn('⚠️ خطأ من مزود المصادقة (OAuth):', desc);
+            if (typeof showToast === 'function') {
+                showToast('تعذّر تسجيل الدخول عبر Google: ' + decodeURIComponent(desc), 'error');
+            }
+        }
+        if (hadAuthData) {
+            url.searchParams.delete('code');
+            url.searchParams.delete('error');
+            url.searchParams.delete('error_description');
+            url.searchParams.delete('error_description_encoded');
+            url.hash = '';
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+            console.log('🧹 تم تنظيف رابط OAuth بعد العودة');
+        }
+    } catch (e) { /* تجاهل */ }
+})();
 
 // ========== الحالة العامة ==========
 const appState = {
@@ -77,16 +112,6 @@ const appState = {
             features: ['حجز مسبق', 'قوائم محدثة', 'تقييمات الزوار']
         }
     ],
-    villagesByCenter: {
-        'قنا': ['قنا البلد','الشرق','الغرب','الكويت','الساحل'],
-        'نقادة': ['نقادة','الركاب','الكلاحين','الزوايدة'],
-        'قوص': ['قوص','العيايشة','الأشراف','المخادمة'],
-        'دشنا': ['دشنا','أبو دياب','السمطا','العويضات'],
-        'فرشوط': ['فرشوط','الكوم الأحمر','النجوع','الرواتب'],
-        'أبو تشت': ['أبو تشت','البلابيش','النجوع','الرئيسية'],
-        'نجع حمادي': ['نجع حمادي','الطود','الحلفاية','الغربية'],
-        'قفط': ['قفط','القلعة','الرفش','الصباب']
-    },
     seller: { products: [], orders: [], currentTab: 'products', filterCategory: 'all', filterOrderStatus: 'all', chart: null },
     delivery: { availableOrders: [], myOrders: [], currentTab: 'available' },
     tempImages: [],
@@ -98,6 +123,209 @@ const appState = {
     ordersSubscription: null,
     notificationsSubscription: null
 };
+
+// ========== بيانات المحافظات والمراكز (مصر) ==========
+// المراكز تتغير حسب المحافظة المختارة
+const MISAR_GOV_CENTERS = {
+    'قنا': ['قنا', 'نقادة', 'قوص', 'دشنا', 'فرشوط', 'أبو تشت', 'نجع حمادي', 'قفط'],
+    'الأقصر': ['الأقصر', 'إسنا', 'أرمنت', 'القرنة', 'الطود', 'القضابية', 'الزينية', 'البياضية', 'أخميم الجديدة'],
+    'أسوان': ['أسوان', 'دراو', 'كوم أمبو', 'نصر النوبة', 'كلابشة', 'إدفو', 'الرديسية', 'البصيلية', 'السباعية', 'عبود', 'شلكان', 'أبو سمبل'],
+    'سوهاج': ['سوهاج', 'أخميم', 'البلينا', 'المراغة', 'المنشاة', 'دار السلام', 'جهينة', 'ساقلته', 'طما', 'طهطا', 'الكوثر'],
+    'أسيوط': ['أسيوط', 'ديروط', 'منفلوط', 'القوصية', 'أبنوب', 'أبو تيج', 'الغنايم', 'ساحل سليف', 'البداري', 'صدفا'],
+    'البحر الأحمر': ['الغردقة', 'رأس غارب', 'سفاجا', 'القصير', 'مرسى علم', 'شلاتين', 'حلايب', 'الجونة'],
+    'المنيا': ['المنيا', 'العدوة', 'مغاغة', 'بني مزار', 'مطاي', 'سمالوط', 'المدينة الفكرية', 'ملوي', 'دير مواس', 'ببا', 'إزراة']
+};
+
+// ====== المحافظات/المراكز المفعّلة من المؤسس ======
+// التخزين في app_settings:
+//  deleted_governorates = JSON.stringify(['محافظة', ...]) — محافظات محذوفة نهائياً
+//  deleted_centers = JSON.stringify({ 'قنا': ['نقادة'], ... }) — مراكز محذوفة نهائياً
+//  extra_centers = JSON.stringify({ 'قنا': ['مركز جديد'], ... }) — مراكز/محافظات مضافة من المؤسس
+// (مفاتيح قديمة enabled_governorates/disabled_centers بتُقرأ وتُدمج تلقائياً)
+
+let _misarLocationSettingsCache = null;
+
+function _parseLocationSetting(raw, fallback) {
+    try { const v = JSON.parse(raw); return v ?? fallback; } catch { return fallback; }
+}
+
+// يحضّر إعدادات المواقع من app_settings (مع cache جلسة)
+async function getLocationSettings() {
+    if (_misarLocationSettingsCache) return _misarLocationSettingsCache;
+    const defaults = { deletedGovernorates: [], deletedCenters: {}, extraCenters: {} };
+    try {
+        const { data, error } = await supabaseClient
+            .from('app_settings')
+            .select('setting_key, setting_value')
+            .in('setting_key', ['deleted_governorates', 'deleted_centers', 'extra_centers', 'disabled_centers']);
+        if (error) throw error;
+        const map = {};
+        (data || []).forEach(s => map[s.setting_key] = s.setting_value);
+        // دمج المفتاح القديم disabled_centers مع الجديد deleted_centers
+        const oldDisabled = map.disabled_centers ? _parseLocationSetting(map.disabled_centers, {}) : {};
+        const newDeleted = map.deleted_centers ? _parseLocationSetting(map.deleted_centers, {}) : {};
+        const mergedCenters = { ...oldDisabled };
+        Object.keys(newDeleted).forEach(g => {
+            mergedCenters[g] = Array.from(new Set([...(mergedCenters[g] || []), ...newDeleted[g]]));
+        });
+        _misarLocationSettingsCache = {
+            deletedGovernorates: map.deleted_governorates ? _parseLocationSetting(map.deleted_governorates, []) : [],
+            deletedCenters: mergedCenters,
+            extraCenters: map.extra_centers ? _parseLocationSetting(map.extra_centers, {}) : {}
+        };
+    } catch (e) {
+        console.warn('تعذر تحميل إعدادات المواقع، استخدام الافتراضي:', e);
+        _misarLocationSettingsCache = defaults;
+    }
+    return _misarLocationSettingsCache;
+}
+
+function clearLocationSettingsCache() { _misarLocationSettingsCache = null; }
+
+// حفظ إعدادات المواقع من لوحة المؤسس
+async function saveLocationSettings(settings) {
+    const rows = [
+        { setting_key: 'deleted_governorates', setting_value: JSON.stringify(settings.deletedGovernorates ?? []) },
+        { setting_key: 'deleted_centers', setting_value: JSON.stringify(settings.deletedCenters ?? {}) },
+        { setting_key: 'extra_centers', setting_value: JSON.stringify(settings.extraCenters ?? {}) }
+    ];
+    for (const row of rows) {
+        const { error } = await supabaseClient
+            .from('app_settings')
+            .upsert({
+                setting_key: row.setting_key,
+                setting_value: row.setting_value, // JSON string صالح — jsonb يقبلها
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'setting_key' });
+        if (error) throw error;
+    }
+    clearLocationSettingsCache();
+    if (typeof logActivity === 'function' && appState.user) {
+        await logActivity(appState.user.id, 'update_location_settings', {});
+    }
+}
+
+// قائمة المحافظات المتاحة فعلياً (بعد تصفية المؤسس)
+async function getAvailableGovernorates() {
+    const s = await getLocationSettings();
+    const all = Object.keys(MISAR_GOV_CENTERS)
+        .concat(Object.keys(s.extraCenters || {}).filter(g => !MISAR_GOV_CENTERS[g]));
+    return all.filter(g => !(s.deletedGovernorates || []).includes(g));
+}
+
+// قائمة المراكز المتاحة لمحافظة معينة (بعد تصفية المؤسس)
+async function getAvailableCenters(governorate) {
+    const s = await getLocationSettings();
+    const base = MISAR_GOV_CENTERS[governorate] || [];
+    const extra = (s.extraCenters || {})[governorate] || [];
+    const deleted = (s.deletedCenters || {})[governorate] || [];
+    return base.concat(extra.filter(c => !base.includes(c))).filter(c => !deleted.includes(c));
+}
+
+// تعبئة قائمة المحافظات في أي select مع تحديث المراكز حسب المحافظة
+async function populateGovernorateSelect(selectEl, selectedValue = '') {
+    if (!selectEl) return;
+    const governorates = await getAvailableGovernorates();
+    selectEl.innerHTML = '<option value="">اختر المحافظة</option>';
+    governorates.forEach(gov => {
+        const opt = document.createElement('option');
+        opt.value = gov;
+        opt.textContent = gov;
+        selectEl.appendChild(opt);
+    });
+    if (selectedValue && governorates.includes(selectedValue)) selectEl.value = selectedValue;
+}
+
+async function populateCenterSelect(centerEl, governorate, selectedValue = '') {
+    if (!centerEl) return;
+    const centers = await getAvailableCenters(governorate);
+    centerEl.innerHTML = '<option value="">اختر المركز / المدينة</option>';
+    centers.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        centerEl.appendChild(opt);
+    });
+    if (selectedValue && centers.includes(selectedValue)) centerEl.value = selectedValue;
+}
+
+// تهيئة قوائم المحافظة/المركز في شاشة التسجيل
+async function initRegisterLocationSelectors() {
+    const govEl = document.getElementById('registerGovernorate');
+    const centerEl = document.getElementById('registerCenter');
+    if (!govEl || !centerEl) return;
+    await populateGovernorateSelect(govEl, appState.userData?.governorate || 'قنا');
+    await populateCenterSelect(centerEl, govEl.value || 'قنا', appState.userData?.center || '');
+    govEl.addEventListener('change', async () => {
+        await populateCenterSelect(centerEl, govEl.value);
+    });
+}
+
+// تهيئة وربط قوائم الموقع في نموذج توصيل (prefix مثل 'checkout' أو 'direct')
+function setupCheckoutLocationSelectors(prefix) {
+    const govEl = document.getElementById(prefix + 'Governorate');
+    const centerEl = document.getElementById(prefix + 'Center') || document.getElementById(prefix + 'City');
+    if (!govEl || !centerEl || govEl.dataset.locationBound === '1') return;
+    govEl.dataset.locationBound = '1';
+    govEl.addEventListener('change', () => {
+        populateCenterSelect(centerEl, govEl.value);
+    });
+}
+
+// تعبئة نموذج التوصيل تلقائياً من بيانات الحساب (user_data للمستخدم الحالي)
+// لا يعدّل بيانات الحساب إلا إذا اختار المستخدم الحفظ صراحةً (checkbox)
+function fillCheckoutFormFromUserData(prefix) {
+    const userData = appState.userData || {};
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) el.value = val;
+    };
+    const govEl = document.getElementById(prefix + 'Governorate');
+    const centerEl = document.getElementById(prefix + 'Center') || document.getElementById(prefix + 'City');
+    const governorate = userData.governorate || 'قنا';
+    const center = userData.center || '';
+
+    if (govEl) {
+        populateGovernorateSelect(govEl, governorate).then(() => { govEl.value = governorate; });
+    }
+    if (centerEl) {
+        populateCenterSelect(centerEl, governorate, center).then(() => { centerEl.value = center; });
+    }
+    setVal(prefix + 'Name', userData.name || '');
+    setVal(prefix + 'Phone', userData.phone || '');
+    setVal(prefix + 'Address', userData.address || '');
+    setVal(prefix + 'Notes', '');
+    const saveCb = document.getElementById(prefix === 'checkout' ? 'saveCheckoutAddressAsDefault' : 'saveAddressAsDefault');
+    if (saveCb) saveCb.checked = false;
+}
+
+// حفظ العنوان الجديد كعنوان أساسي في user_data للمستخدم الحالي فقط عند طلبه صراحةً
+async function saveAddressAsDefaultIfRequested(prefix, governorate, center, address, phone) {
+    const saveCb = document.getElementById(prefix === 'checkout' ? 'saveCheckoutAddressAsDefault' : 'saveAddressAsDefault');
+    if (!saveCb || !saveCb.checked || !appState.user) return;
+    try {
+        const updates = { id: appState.user.id };
+        if (governorate) updates.governorate = governorate;
+        if (center) updates.center = center;
+        if (address) updates.address = address;
+        if (phone) updates.phone = phone;
+        const { error } = await supabaseClient.from('user_data').upsert(updates, { onConflict: 'id' });
+        if (error) {
+            // الأعمدة الجديدة قد لا تكون موجودة بعد — نحفظ المتوفر فقط
+            const base = { id: appState.user.id };
+            if (phone) base.phone = phone;
+            const { error: e2 } = await supabaseClient.from('user_data').upsert(base, { onConflict: 'id' });
+            if (e2) { console.warn('⚠️ فشل حفظ العنوان الأساسي:', e2); return; }
+        }
+        if (governorate) appState.userData.governorate = governorate;
+        if (center) { appState.userData.center = center; if (appState.location) appState.location.center = center; }
+        if (address) appState.userData.address = address;
+        if (phone) appState.userData.phone = phone;
+        showToast('تم حفظ العنوان الجديد كعنوان أساسي', 'success');
+    } catch (err) {
+        console.warn('⚠️ فشل حفظ العنوان الأساسي:', err);
+    }
+}
 
 // ========== دوال مساعدة ==========
 function getBearElement() { return document.querySelector('.bear-avatar'); }
@@ -428,19 +656,27 @@ async function signInWithGoogle() {
         accountTypeEl = registerAccountType;
     }
     if (!accountTypeEl) { showToast('خطأ في النموذج', 'error'); return; }
-    sessionStorage.setItem('pendingAccountType', accountTypeEl.value);
+    const chosenType = accountTypeEl.value;
+    // حفظ نوع الحساب في sessionStorage و localStorage (احتياط: قد يفقده sessionStorage
+    // في بعض متصفحات الهاتف أو عند إعادة فتح الصفحة بعد إعادة التوجيه)
+    sessionStorage.setItem('pendingAccountType', chosenType);
+    localStorage.setItem('misarPendingAccountType', chosenType);
     showLoading(true);
     try {
-        // استخدام الرابط الحالي الكامل كوجهة عودة ليعمل OAuth بشكل صحيح بعد إعادة التوجيه
+        // رابط عودة نظيف بدون استعلامات أو هاش (حتى لا يرفضه Supabase/Google)
         const currentUrl = window.location.origin + window.location.pathname;
         const { error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
-            options: { redirectTo: currentUrl }
+            options: {
+                redirectTo: currentUrl,
+                queryParams: { prompt: 'select_account' }
+            }
         });
         if (error) {
             console.error('❌ خطأ في تسجيل الدخول عبر Google:', error);
             showToast(error.message || 'فشل تسجيل الدخول عبر Google', 'error');
             showBearReaction(false);
+            showLoading(false);
         }
         // عند النجاح سيتم توجيه المستخدم إلى صفحة Google ثم العودة تلقائياً
     } catch (err) {
@@ -456,7 +692,12 @@ async function signInWithGoogle() {
 // تطبيق نوع الحساب المختار قبل تسجيل الدخول عبر Google
 // ============================================================
 async function applyPendingAccountType() {
-    const pendingType = sessionStorage.getItem('pendingAccountType');
+    // قراءة نوع الحساب من sessionStorage أو من الاحتياطي في localStorage
+    let pendingType = sessionStorage.getItem('pendingAccountType');
+    if (!pendingType) {
+        pendingType = localStorage.getItem('misarPendingAccountType');
+        if (pendingType) sessionStorage.setItem('pendingAccountType', pendingType);
+    }
     if (!pendingType) return false;
     if (!appState.user) {
         // لا يوجد مستخدم بعد (قد تكون أول زيارة بعد إعادة التوجيه) - ننتظر حتى اكتمال الجلسة
@@ -502,11 +743,13 @@ async function applyPendingAccountType() {
         appState.userData.account_type = accountType;
         appState.userData.status = accountType === 'delivery' ? 'pending' : 'approved';
         sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
         console.log('✅ تم تطبيق نوع الحساب عبر Google:', accountType);
         return true;
     } catch (err) {
         console.error('❌ خطأ في applyPendingAccountType:', err);
         sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
         return false;
     }
 }
@@ -562,8 +805,12 @@ async function signUpWithEmail() {
     const emailInput = document.getElementById('registerEmail');
     const passwordInput = document.getElementById('registerPassword');
     const confirmInput = document.getElementById('registerConfirmPassword');
+    const phoneInput = document.getElementById('registerPhone');
+    const addressInput = document.getElementById('registerAddress');
+    const addressNotesInput = document.getElementById('registerAddressNotes');
     const accountTypeSelect = document.getElementById('registerAccountType');
     const governorateSelect = document.getElementById('registerGovernorate');
+    const centerSelect = document.getElementById('registerCenter');
 
     if (!emailInput || !passwordInput || !confirmInput || !accountTypeSelect) {
         showToast('النموذج غير مكتمل، أعد تحميل الصفحة', 'error');
@@ -574,20 +821,35 @@ async function signUpWithEmail() {
     const email = emailInput.value.trim();
     const password = passwordInput.value;
     const confirm = confirmInput.value;
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const address = addressInput ? addressInput.value.trim() : '';
+    const addressNotes = addressNotesInput ? addressNotesInput.value.trim() : '';
     let accountType = accountTypeSelect.value;
     let deliveryCenter = '';
-    let governorate = governorateSelect ? governorateSelect.value : 'قنا';
+    let governorate = governorateSelect ? governorateSelect.value : '';
+    let center = centerSelect ? centerSelect.value : '';
 
-    if (accountType === 'delivery') {
-        const centerSelect = document.getElementById('deliveryCenterSelect');
-        if (!centerSelect) { showToast('النموذج غير مكتمل', 'error'); return; }
-        deliveryCenter = centerSelect.value;
-        if (!deliveryCenter) { showToast('يرجى اختيار المركز للمندوب', 'warning'); return; }
-    }
+    // ===== التحقق من الحقول الإجبارية =====
+    if (!governorate) { showToast('يرجى اختيار المحافظة', 'warning'); return; }
+    if (!center) { showToast('يرجى اختيار المركز / المدينة', 'warning'); return; }
+    if (!name) { showToast('يرجى إدخال الاسم', 'warning'); return; }
+    if (!phone) { showToast('يرجى إدخال رقم الهاتف', 'warning'); return; }
+    if (!email) { showToast('يرجى إدخال البريد الإلكتروني', 'warning'); return; }
+    if (!password) { showToast('يرجى إدخال كلمة المرور', 'warning'); return; }
+    if (!confirm) { showToast('يرجى تأكيد كلمة المرور', 'warning'); return; }
+    if (!address) { showToast('يرجى إدخال العنوان بالتفصيل', 'warning'); return; }
 
-    if (!email || !password || !confirm) { showToast('يرجى ملء جميع الحقول المطلوبة', 'warning'); return; }
+    // ===== التحقق من صحة البيانات =====
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { showToast('البريد الإلكتروني غير صحيح', 'error'); return; }
+    const phoneRegex = /^01[0125][0-9]{8}$/;
+    if (!phoneRegex.test(phone)) { showToast('رقم الهاتف غير صحيح (مثال: 01012345678)', 'error'); return; }
     if (password !== confirm) { showToast('كلمة المرور غير متطابقة', 'error'); return; }
     if (password.length < 6) { showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning'); return; }
+
+    if (accountType === 'delivery') {
+        deliveryCenter = center;
+    }
 
     if (email === 'sa3dgelany@gmail.com') {
         accountType = 'founder';
@@ -599,8 +861,11 @@ async function signUpWithEmail() {
 
     const metadata = {
         account_type: accountType,
-        full_name: name || undefined,
-        governorate: governorate
+        full_name: name,
+        governorate: governorate,
+        phone: phone,
+        address: address,
+        center: center
     };
     if (accountType === 'delivery') {
         metadata.center = deliveryCenter;
@@ -649,17 +914,42 @@ async function signUpWithEmail() {
             const userDataToInsert = {
                 id: data.user.id,
                 name: name || data.user.email?.split('@')[0] || '',
+                email: email,
+                phone: phone,
+                address: address,
+                address_notes: addressNotes || '',
                 account_type: accountType,
                 governorate: governorate || 'قنا',
-                center: deliveryCenter || '',
+                center: center || deliveryCenter || '',
                 status: accountType === 'delivery' ? 'pending' : 'approved',
             };
             const { error: insertError } = await supabaseClient
                 .from('user_data')
                 .upsert(userDataToInsert, { onConflict: 'id' });
             if (insertError) {
-                console.warn('⚠️ فشل إدراج بيانات المستخدم في user_data:', insertError);
-                showToast('تم إنشاء الحساب ولكن فشل حفظ البيانات الشخصية، يمكنك تحديثها لاحقاً من الملف الشخصي.', 'warning');
+                // الأعمدة الجديدة (address/address_notes) قد لا تكون موجودة بعد في قاعدة البيانات —
+                // نعيد المحاولة بالأعمدة الأساسية الموجودة حتى لا يفشل التسجيل
+                console.warn('⚠️ فشل الحفظ الكامل، إعادة المحاولة بالأعمدة الأساسية:', insertError.message);
+                const baseData = {
+                    id: data.user.id,
+                    name: name || data.user.email?.split('@')[0] || '',
+                    email: email,
+                    phone: phone,
+                    account_type: accountType,
+                    governorate: governorate || 'قنا',
+                    center: center || deliveryCenter || '',
+                    status: accountType === 'delivery' ? 'pending' : 'approved',
+                };
+                const { error: retryError } = await supabaseClient
+                    .from('user_data')
+                    .upsert(baseData, { onConflict: 'id' });
+                if (retryError) {
+                    console.warn('⚠️ فشل إدراج بيانات المستخدم في user_data:', retryError);
+                    showToast('تم إنشاء الحساب ولكن فشل حفظ البيانات الشخصية، يمكنك تحديثها لاحقاً من الملف الشخصي.', 'warning');
+                } else {
+                    console.log('✅ تم حفظ البيانات الأساسية في user_data (بدون العنوان التفصيلي).');
+                    if (address) showToast('تم الحفظ بدون العنوان التفصيلي — نفّذ ملف add_user_address_columns.sql في Supabase لتفعيله.', 'info');
+                }
             } else {
                 console.log('✅ تم حفظ بيانات المستخدم في user_data بنجاح.');
             }
@@ -705,6 +995,7 @@ async function logout(showConfirm = true) {
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
         sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
         appState.user = null;
         appState.userData = {};
         toggleLoginMenu(false);
@@ -760,10 +1051,13 @@ async function loadUserData() {
         const defaultData = {
             id: appState.user.id,
             name: appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || '',
-            phone: '',
+            email: appState.user.email || '',
+            phone: appState.user.user_metadata?.phone || '',
+            address: appState.user.user_metadata?.address || '',
+            address_notes: appState.user.user_metadata?.address_notes || '',
             governorate: appState.user.user_metadata?.governorate || 'قنا',
             center: appState.user.user_metadata?.center || '',
-            village: '',
+            village: appState.user.user_metadata?.village || '',
             image_url: appState.user.user_metadata?.avatar_url || '',
             account_type: appState.user.user_metadata?.account_type || 'client',
             status: appState.user.user_metadata?.status || 'approved'
@@ -891,8 +1185,6 @@ function updateUserInfo(isGuest = false) {
         if (editPhone) editPhone.value = appState.userData.phone || '';
         const editCenter = document.getElementById('editCenter');
         if (editCenter) editCenter.value = appState.userData.center || '';
-        const editVillage = document.getElementById('editVillage');
-        if (editVillage) editVillage.value = appState.userData.village || '';
         const editUsername = document.getElementById('editUsername');
         if (editUsername) editUsername.value = appState.userData.username || '';
         const editBio = document.getElementById('editBio');
@@ -903,50 +1195,28 @@ function updateUserInfo(isGuest = false) {
 // ============================================================
 // الموقع
 // ============================================================
-function loadVillagesForCenter(center, selectedVillage = '') {
-    const villageSelect = document.getElementById('villageSelect');
-    if (!villageSelect) { console.warn('⚠️ عنصر villageSelect غير موجود في الصفحة'); return; }
-    villageSelect.innerHTML = '<option value="">اختر القرية</option>';
-    if (center && appState.villagesByCenter[center]) {
-        const villages = appState.villagesByCenter[center];
-        villages.forEach(village => {
-            const option = document.createElement('option');
-            option.value = village;
-            option.textContent = village;
-            villageSelect.appendChild(option);
-        });
-    } else {
-        console.log(`لا توجد قرى مسجلة للمركز: ${center}`);
-    }
-    if (selectedVillage && villageSelect.querySelector(`option[value="${selectedVillage}"]`)) {
-        villageSelect.value = selectedVillage;
-    }
-}
-
 async function saveLocation() {
     const governorateSelect = document.getElementById('governorateSelect');
     const centerSelect = document.getElementById('centerSelect');
-    const villageSelect = document.getElementById('villageSelect');
 
-    if (!centerSelect || !villageSelect) { showToast('النموذج غير متوفر', 'error'); return; }
+    if (!centerSelect) { showToast('النموذج غير متوفر', 'error'); return; }
 
     const governorate = governorateSelect ? governorateSelect.value : 'قنا';
     const center = centerSelect.value;
-    const village = villageSelect.value;
 
-    if (!center || !village) { showToast('يرجى اختيار المركز والقرية', 'warning'); return; }
+    if (!center) { showToast('يرجى اختيار المركز', 'warning'); return; }
 
-    appState.location = { governorate, center, village };
+    appState.location = { governorate, center };
 
     if (appState.user) {
         try {
             const { error } = await supabaseClient
                 .from('user_data')
-                .upsert({ id: appState.user.id, governorate, center, village });
+                .upsert({ id: appState.user.id, governorate, center }, { onConflict: 'id' });
             if (error) throw error;
             appState.userData.governorate = governorate;
             appState.userData.center = center;
-            appState.userData.village = village;
+            appState.userData.village = '';
         } catch (error) {
             showToast('فشل حفظ الموقع في قاعدة البيانات', 'error');
             console.error(error);
@@ -973,10 +1243,8 @@ function openLocationSettings() {
         const loc = appState.user ? appState.userData : appState.location;
         if (!loc) return;
         const center = loc.center || '';
-        const village = loc.village || '';
         const centerSelect = document.getElementById('centerSelect');
         if (centerSelect) centerSelect.value = center;
-        loadVillagesForCenter(center, village);
     }, 150);
 }
 
@@ -1566,6 +1834,7 @@ function showScreen(screenId) {
         if (typeof loadCart === 'function') loadCart();
     }
     if (screenId === 'loginScreen' || screenId === 'registerScreen') setTimeout(addInputInteractions, 50);
+    if (screenId === 'registerScreen') setTimeout(initRegisterLocationSelectors, 50);
 }
 function goBack() { showScreen(appState.previousScreen || 'homeScreen'); }
 function updateNavigation(screenId) {
@@ -2174,7 +2443,17 @@ window.handleToggleChange = handleToggleChange;
 window.generateOTP = generateOTP;
 window.loadFounderStats = loadFounderStats;
 window.trackFounderView = trackFounderView;
-window.loadVillagesForCenter = loadVillagesForCenter;
+window.populateGovernorateSelect = populateGovernorateSelect;
+window.populateCenterSelect = populateCenterSelect;
+window.getLocationSettings = getLocationSettings;
+window.saveLocationSettings = saveLocationSettings;
+window.getAvailableGovernorates = getAvailableGovernorates;
+window.getAvailableCenters = getAvailableCenters;
+window.clearLocationSettingsCache = clearLocationSettingsCache;
+window.initFounderLocationsAdmin = initFounderLocationsAdmin;
+window.setupCheckoutLocationSelectors = setupCheckoutLocationSelectors;
+window.fillCheckoutFormFromUserData = fillCheckoutFormFromUserData;
+window.saveAddressAsDefaultIfRequested = saveAddressAsDefaultIfRequested;
 
 // ===== تصدير دوال المؤسس CRUD =====
 window.getAllDeliveries = getAllDeliveries;
