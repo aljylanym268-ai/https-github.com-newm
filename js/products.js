@@ -3,6 +3,12 @@ async function loadProductsFromDB() {
     const { data, error } = await supabaseClient.from('products').select('*').order('created_at', { ascending: false });
     if (error) { console.error(error); return []; }
     appState.products = data;
+    // إعادة عرض المنتجات بعد وصولها من قاعدة البيانات
+    // (لأن التحميل بيحصل في الخلفية بعد ظهور الشاشة)
+    try {
+        if (typeof loadFeaturedProducts === 'function') loadFeaturedProducts();
+        if (typeof loadMarketProducts === 'function') loadMarketProducts();
+    } catch (e) { console.warn('render products error:', e); }
     return data;
 }
 

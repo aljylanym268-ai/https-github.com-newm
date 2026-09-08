@@ -1083,6 +1083,21 @@ async function loadUserData() {
             appState.userData = defaultData;
         }
 
+        // ===== ضمان صلاحيات المؤسس للبريد الرسمي =====
+        // لو صف user_data اتمسح أو نوع الحساب اتغير بالغلط، بنصلحه تلقائياً
+        if ((appState.user.email || '').toLowerCase() === 'sa3dgelany@gmail.com' && appState.userData.account_type !== 'founder') {
+            appState.userData.account_type = 'founder';
+            const { error: fixErr } = await supabaseClient
+                .from('user_data')
+                .update({ account_type: 'founder' })
+                .eq('id', appState.user.id);
+            if (fixErr) {
+                // لو الصف مش موجود أصلاً، ننشئه كمؤسس
+                await supabaseClient.from('user_data').upsert({ ...defaultData, account_type: 'founder' });
+            }
+            console.log('👑 تم استعادة صلاحيات المؤسس تلقائياً');
+        }
+
         if (appState.userData) {
             appState.location = {
                 governorate: appState.userData.governorate || 'قنا',

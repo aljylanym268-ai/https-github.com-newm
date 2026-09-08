@@ -1,0 +1,16 @@
+export default async function run(page, ui) {
+  // cart.js ??? undefined? ???? ?? ???????? ??? ?? ???????
+  const result = await page.evaluate(async () => {
+    const r = await fetch('js/cart.js');
+    const txt = await r.text();
+    // ???? ???????? ?????? ????? ?????
+    try {
+      const fn = new Function(txt);
+      fn();
+      return { status: r.status, len: txt.length, execError: null, hasFn: typeof window.createOrderCardForDelivery };
+    } catch(e) {
+      return { status: r.status, len: txt.length, execError: e.message };
+    }
+  });
+  return result;
+}

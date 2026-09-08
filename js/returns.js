@@ -169,8 +169,8 @@ async function enrichReturnsData(returns) {
 
       r.product = prod.id ? prod : { name: 'منتج غير معروف', image_url: null };
       r.order = order;
-      r.buyer = userMap.get(buyerId) || { name: order.customer_name || 'عميل', phone: order.customer_phone || '', address: order.shipping_address || '' };
-      r.seller = (sellerId && userMap.get(sellerId)) || { name: 'بائع', center: order.center || '' };
+      r.buyer = userMap.get(buyerId) || { name: order.customer_name || 'العميل', phone: order.customer_phone || 'غير متوفر', address: order.shipping_address || 'العنوان غير محدد' };
+      r.seller = (sellerId && userMap.get(sellerId)) || { name: 'البائع', phone: 'غير متوفر', center: order.center || 'غير محدد', governorate: order.governorate || 'غير محدد', address: order.shipping_address || 'عنوان البائع غير محدد' };
       r.delivery = userMap.get(r.delivery_id) || {};
     });
   } catch (enrichErr) {

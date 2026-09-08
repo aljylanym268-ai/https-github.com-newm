@@ -1,0 +1,21 @@
+export default async function run(page, ui) {
+  // ???? ??????? loadAvailableOrders ?????? (?????? ?????) ????? ???????
+  const r = await page.evaluate(async () => {
+    // ?????? ???? ?????
+    appState.user = { id: 'test-delivery-id' };
+    appState.userData = { account_type: 'delivery', center: '???' };
+    let result = null, err = null;
+    try {
+      result = await loadAvailableOrders();
+    } catch(e) { err = e.message; }
+    // ??? ???????? ?? ??? ?????
+    let cards = [];
+    if (result && result.length) {
+      result.forEach(o => {
+        try { cards.push(createOrderCardForDelivery(o, true).innerText.slice(0, 300)); } catch(e) { cards.push('CARD ERROR: ' + e.message); }
+      });
+    }
+    return { count: result ? result.length : 0, err, cards };
+  });
+  return r;
+}

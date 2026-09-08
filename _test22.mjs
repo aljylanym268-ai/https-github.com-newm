@@ -1,0 +1,9 @@
+export default async function run(page, ui) {
+  // ?? ????? ?? ?? ?????. ?? supabase global ????? ??? ???????? ???? UMD CDN ?????. ?????:
+  const r = await page.evaluate(() => ({
+    supa: typeof window.supabase,
+    cdnScriptCount: [...document.scripts].filter(s => s.src.includes('jsdelivr')).length,
+    cdnLoaded: [...document.scripts].filter(s => s.src.includes('jsdelivr')).map(s => ({ src: s.src.slice(0,80), async: s.async }))
+  }));
+  return r;
+}

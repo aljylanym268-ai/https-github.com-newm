@@ -517,6 +517,34 @@ body {
     text-decoration: none;
     font-weight: 700;
 }
+.register-now-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 14px 20px;
+    margin-top: 12px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--gold) 0%, #d4a017 100%);
+    color: var(--brown-dark, #3e2c1c) !important;
+    font-size: 1.1rem;
+    font-weight: 800;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.register-now-btn i {
+    margin-inline-start: 6px;
+}
+.register-now-btn:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    filter: brightness(1.08);
+}
+.register-now-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+@media (max-width: 480px) {
+    .register-now-btn { font-size: 1rem; padding: 13px 16px; }
+}
 
 /* ===== الدب الفرعوني ===== */
 .bear-wrapper {

@@ -129,14 +129,106 @@ async function loadTotalVisits() {
     } catch (err) { /* تجاهل */ }
 }
 
-// ---------- 4) تهيئة لوحة المؤسس ----------
+// ---------- 4) عدّاد زيارات اليوم ----------
+function todayKey() {
+    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+async function trackDailyVisit() {
+    try {
+        const { data: cur } = await supabaseClient
+            .from('app_settings')
+            .select('setting_value')
+            .eq('setting_key', 'daily_visits')
+            .maybeSingle();
+
+        let info = {};
+        try { info = JSON.parse(cur?.setting_value || '{}'); } catch (e) { info = {}; }
+        if (info.date !== todayKey()) info = { date: todayKey(), count: 0 };
+        info.count = (info.count || 0) + 1;
+
+        await supabaseClient.from('app_settings').upsert({
+            setting_key: 'daily_visits',
+            setting_value: JSON.stringify(info),
+            updated_at: new Date()
+        });
+    } catch (err) {
+        console.warn('تعذر تسجيل زيارة اليوم:', err.message);
+    }
+}
+
+// تحميل العدّادات (الإجمالي + اليومي) وتحديثها في الواجهة
+async function loadVisitsCounters() {
+    try {
+        const { data } = await supabaseClient
+            .from('app_settings')
+            .select('setting_key, setting_value')
+            .in('setting_key', ['total_visits', 'daily_visits']);
+
+        let total = 0, daily = 0;
+        (data || []).forEach(row => {
+            if (row.setting_key === 'total_visits') total = Number(row.setting_value) || 0;
+            if (row.setting_key === 'daily_visits') {
+                try {
+                    const info = JSON.parse(row.setting_value || '{}');
+                    daily = info.date === todayKey() ? (info.count || 0) : 0;
+                } catch (e) { daily = 0; }
+            }
+        });
+
+        ['totalVisitsCount', 'totalVisitsCount2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = total;
+        });
+        const dailyEl = document.getElementById('dailyVisitsCount');
+        if (dailyEl) dailyEl.textContent = daily;
+    } catch (err) { /* تجاهل */ }
+}
+
+// زر التحديث اللحظي
+function refreshOnlineVisits() {
+    loadVisitsCounters();
+    updateOnlineBadge();
+}
+
+// زر حذف / تصفير العدّادات
+async function resetVisitsCounters() {
+    if (!confirm('هل تريد فعلاً تصفير عدّادات الزيارات (الإجمالي + اليومي)؟')) return;
+    try {
+        await supabaseClient.from('app_settings').upsert([
+            { setting_key: 'total_visits', setting_value: '0', updated_at: new Date() },
+            { setting_key: 'daily_visits', setting_value: JSON.stringify({ date: todayKey(), count: 0 }), updated_at: new Date() }
+        ]);
+        await loadVisitsCounters();
+        alert('تم تصفير العدّادات بنجاح');
+    } catch (err) {
+        console.error('خطأ في تصفير العدّادات:', err);
+        alert('تعذر تصفير العدّادات: ' + err.message);
+    }
+}
+
+async function loadTotalVisits() {
+    await loadVisitsCounters();
+}
+
+// ---------- 5) تهيئة لوحة المؤسس (تحديث لحظي) ----------
 function initFounderOnlineTab() {
     if (!appState.user || appState.userData?.account_type !== 'founder') return;
-    loadTotalVisits();
+    loadVisitsCounters();
     if (window.__onlineTimer) clearInterval(window.__onlineTimer);
+    if (window.__visitsTimer) clearInterval(window.__visitsTimer);
     window.__onlineTimer = setInterval(updateOnlineBadge, 60000);
+    // تحديث لحظي للعدّادات + قائمة المتصلين كل 10 ثوانٍ
+    window.__visitsTimer = setInterval(() => {
+        loadVisitsCounters();
+        updateOnlineBadge();
+    }, 10000);
 }
 
 window.initOnlineTracking = initOnlineTracking;
 window.initFounderOnlineTab = initFounderOnlineTab;
 window.loadTotalVisits = loadTotalVisits;
+window.loadVisitsCounters = loadVisitsCounters;
+window.refreshOnlineVisits = refreshOnlineVisits;
+window.resetVisitsCounters = resetVisitsCounters;
+window.trackDailyVisit = trackDailyVisit;

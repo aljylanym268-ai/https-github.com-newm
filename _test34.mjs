@@ -1,0 +1,12 @@
+export default async function run(page, ui) {
+  const r = await page.evaluate(async () => {
+    // ?????? ?????? ?? ????? ???????? ?? ??????? ???????
+    const { data: allOrders, error } = await supabaseClient
+      .from('orders')
+      .select('id, status, delivery_id, center, seller_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    return { allOrders, error };
+  });
+  return r;
+}

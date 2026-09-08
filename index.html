@@ -100,7 +100,7 @@
                 <button class="login-btn" id="loginBtn"><i class="fas fa-sign-in-alt"></i> تسجيل الدخول</button>
                 <div class="skip-login"><button onclick="skipLogin()">تخطي التسجيل ومتابعة التصفح</button></div>
                 <div class="login-footer">
-                    <p>ليس لديك حساب؟ <a href="#" id="showRegisterLink">سجل الآن</a></p>
+                    <a href="#" id="showRegisterLink" class="register-now-btn"><i class="fas fa-user-plus"></i> ليس لديك حساب؟ سجل الآن</a>
                 </div>
             </div>
         </div>
@@ -920,6 +920,11 @@
                     <div class="stat-box"><div class="stat-number" id="onlineMembersCount">0</div><div class="stat-label">مسجلين</div></div>
                     <div class="stat-box"><div class="stat-number" id="onlineGuestsCount">0</div><div class="stat-label">زوار (ضيوف)</div></div>
                     <div class="stat-box"><div class="stat-number" id="totalVisitsCount2">0</div><div class="stat-label">إجمالي الزيارات</div></div>
+                    <div class="stat-box"><div class="stat-number" id="dailyVisitsCount" style="color:#1565c0;">0</div><div class="stat-label"><i class="fas fa-calendar-day"></i> زيارات اليوم</div></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                    <button class="refresh-stats-btn" onclick="refreshOnlineVisits()"><i class="fas fa-sync-alt"></i> تحديث لحظي</button>
+                    <button class="refresh-stats-btn" onclick="resetVisitsCounters()" style="background:linear-gradient(135deg,#c62828,#e53935);"><i class="fas fa-trash-alt"></i> حذف / تصفير العدّادات</button>
                 </div>
                 <div class="founder-card">
                     <h4><i class="fas fa-users"></i> قائمة المتصلين أون لاين (تحديث لحظي)</h4>
@@ -1337,20 +1342,22 @@ if (session) {
                                      (appState.userData.account_type === 'founder' ? 'founderDashboardScreen' :
                                      'homeScreen'));
         } else {
-            appState.currentScreen = appState.location ? 'homeScreen' : 'locationScreen';
+            // أول مرة / غير مسجل: شاشة تسجيل الدخول أولاً بدل اختيار الموقع
+            appState.currentScreen = 'loginScreen';
         }
 
-// 3. تحميل البيانات الأساسية
-        await loadProductsFromDB();
+// 3. تحميل البيانات الأساسية (في الخلفية - مش بنستنى عليها عشان التطبيق يفتح بسرعة)
+        loadProductsFromDB();
         loadFeaturedProducts();
         loadMarketProducts();
         loadServices();
         loadCart();
-        await updateCartBadgeFromDB();
+        updateCartBadgeFromDB();
 
         // 3.1 تتبع المتصلين أون لاين + عدّاد الزوار
         try {
             trackSiteVisit();
+            if (typeof trackDailyVisit === 'function') trackDailyVisit();
             initOnlineTracking();
         } catch (e) { console.warn('online tracking error:', e); }
 
@@ -1358,19 +1365,18 @@ if (session) {
         // (عشان لو المؤسس قافل الصفحة، ميكونش قابلة للفتح لأي حد)
         try {
             if (typeof loadGlobalFounderVisibility === 'function') {
-                await loadGlobalFounderVisibility();
+                loadGlobalFounderVisibility();
             }
         } catch (e) { console.warn('founder visibility load error:', e); }
 
-        // 3.2 تسجيل Service Worker لتفعيل الإشعارات على الهاتف (PWA)
+        // 3.2 تسجيل Service Worker لتفعيل الإشعارات على الهاتف (PWA) - بدون انتظار
         if ('serviceWorker' in navigator) {
-            try {
-                const registration = await navigator.serviceWorker.register('./sw.js');
+            navigator.serviceWorker.register('./sw.js').then((registration) => {
                 console.log('✅ تم تسجيل Service Worker بنجاح');
                 appState.swRegistration = registration;
-            } catch (swErr) {
+            }).catch((swErr) => {
                 console.warn('فشل تسجيل Service Worker:', swErr);
-            }
+            });
         }
 
         // 3.5 معالجة روابط URL المشتركة (منتج أو متجر)
@@ -1418,7 +1424,12 @@ if (session) {
         }
 
         // 4. إخفاء شاشة التحميل وعرض الشاشة المناسبة
-        setTimeout(() => {
+        // بنستنى جاهزية بيانات الحساب (لأن التحميل بقى في الخلفية) مع حد أدنى 250ms وحد أقصى 5 ثواني
+        setTimeout(async () => {
+            const waitStart = Date.now();
+            while (appState.user && (!appState.userData || !appState.userData.account_type) && Date.now() - waitStart < 5000) {
+                await new Promise(r => setTimeout(r, 50));
+            }
             document.getElementById('loadingScreen').style.display = 'none';
             // إذا تم التعامل مع رابط منتج/متجر/مؤسس أعلاه، لا نعرض الشاشة الافتراضية
             const handledByUrl = !!(new URLSearchParams(window.location.search).get('id') ||
@@ -1441,15 +1452,12 @@ if (session) {
 
             // إذا كان المستخدم مؤسساً، قم بتحميل لوحة التحكم
             if (isFounder) {
-                setTimeout(() => {
-                    if (typeof refreshFounderDashboard === 'function') {
-                        refreshFounderDashboard();
-                    }
-                }, 500);
+                if (typeof initFounderSettings === 'function') initFounderSettings();
+                if (typeof refreshFounderDashboard === 'function') refreshFounderDashboard();
             }
-        }, 1500);
+        }, 250);
 
-        // ======== إضافة مستمع حالة المصادقة (التعديل الرئيسي) ========
+        // ======== إضافة مستمع حالة المصادقة ========
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session) {
                 // تسجيل الدخول ناجح

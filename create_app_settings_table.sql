@@ -1,6 +1,7 @@
 -- ============================================================
--- MISAR SYSTEMS - جدول إعدادات التطبيق (إدارة المواقع للمؤسس)
+-- MISAR SYSTEMS - جدول إعدادات التطبيق + عدّادات الزيارات
 -- يخزن: deleted_governorates / deleted_centers / extra_centers
+--       + total_visits / daily_visits
 -- نفّذ هذا الملف مرة واحدة في Supabase SQL Editor
 -- ============================================================
 
@@ -15,12 +16,23 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
 -- 2. تفعيل RLS
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 
--- 3. سياسات القراءة: أي مستخدم مسجّل يقدر يقرأ الإعدادات
---    (مطلوب عشان قوائم المحافظات/المراكز تشتغل عند كل المستخدمين)
+-- 3. سياسة القراءة: الجميع (حتى الضيوف غير المسجلين) - مطلوب للعدّادات والقوائم
 DROP POLICY IF EXISTS "app_settings_read_all" ON public.app_settings;
 CREATE POLICY "app_settings_read_all" ON public.app_settings
-    FOR SELECT TO authenticated
+    FOR SELECT
     USING (true);
+
+-- 3.1 سياسات كتابة العدّادات فقط: أي زائر (حتى غير مسجل) - مقيّدة بمفتاحي العدّادات
+DROP POLICY IF EXISTS "app_settings_visit_counters_update" ON public.app_settings;
+CREATE POLICY "app_settings_visit_counters_update" ON public.app_settings
+    FOR UPDATE
+    USING (setting_key IN ('total_visits', 'daily_visits'))
+    WITH CHECK (setting_key IN ('total_visits', 'daily_visits'));
+
+DROP POLICY IF EXISTS "app_settings_visit_counters_insert" ON public.app_settings;
+CREATE POLICY "app_settings_visit_counters_insert" ON public.app_settings
+    FOR INSERT
+    WITH CHECK (setting_key IN ('total_visits', 'daily_visits'));
 
 -- 4. سياسات الكتابة/التعديل/الحذف: المؤسس فقط (account_type = 'founder')
 --    ملاحظة: لو اسم عمود نوع الحساب عندك مختلف غيّر user_data.account_type
@@ -78,7 +90,9 @@ CREATE TRIGGER app_settings_touch
 INSERT INTO public.app_settings (setting_key, setting_value) VALUES
     ('deleted_governorates', '[]'::jsonb),
     ('deleted_centers', '{}'::jsonb),
-    ('extra_centers', '{}'::jsonb)
+    ('extra_centers', '{}'::jsonb),
+    ('total_visits', '0'::jsonb),
+    ('daily_visits', '{"date": "", "count": 0}'::jsonb)
 ON CONFLICT (setting_key) DO NOTHING;
 
 -- ============================================================
