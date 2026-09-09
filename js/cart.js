@@ -273,6 +273,37 @@ function closeCheckoutModal() { document.getElementById('checkoutModal').classLi
 async function createOrder(productId, quantity, totalPrice, sellerId, customerName, customerPhone, shippingAddress, center, deliveryFee = 0) {
     if (!appState.user) throw new Error('يجب تسجيل الدخول');
     console.log(`📦 [createOrder] Creating order for product ${productId}, quantity ${quantity}, total ${totalPrice}`);
+
+    let sellerSnapshot = {
+        seller_name: null,
+        seller_phone: null,
+        seller_address: null,
+        seller_center: null,
+        seller_governorate: null
+    };
+
+    if (sellerId) {
+        const { data: seller, error: sellerError } = await supabaseClient
+            .from('user_data')
+            .select('name, full_name, shop_name, store_name, display_name, phone, mobile, phone_number, address, street_address, shop_address, center, governorate, village')
+            .eq('id', sellerId)
+            .maybeSingle();
+
+        if (!sellerError && seller) {
+            const sellerName = seller.name || seller.full_name || seller.shop_name || seller.store_name || seller.display_name || 'بائع غير معروف';
+            const sellerPhone = seller.phone || seller.mobile || seller.phone_number || null;
+            const sellerAddressParts = [seller.governorate, seller.center, seller.village, seller.address, seller.street_address, seller.shop_address].filter(Boolean);
+            const sellerAddress = sellerAddressParts.join(' - ') || seller.address || seller.center || seller.governorate || null;
+            sellerSnapshot = {
+                seller_name: sellerName,
+                seller_phone: sellerPhone,
+                seller_address: sellerAddress,
+                seller_center: seller.center || null,
+                seller_governorate: seller.governorate || null
+            };
+        }
+    }
+
     const { data, error } = await supabaseClient.from('orders').insert({
         buyer_id: appState.user.id,
         seller_id: sellerId,
@@ -285,6 +316,11 @@ async function createOrder(productId, quantity, totalPrice, sellerId, customerNa
         customer_phone: customerPhone,
         shipping_address: shippingAddress,
         center: center,
+        seller_name: sellerSnapshot.seller_name,
+        seller_phone: sellerSnapshot.seller_phone,
+        seller_address: sellerSnapshot.seller_address,
+        seller_center: sellerSnapshot.seller_center,
+        seller_governorate: sellerSnapshot.seller_governorate,
         created_at: new Date()
     }).select().maybeSingle();
     if (error) throw error;
@@ -831,12 +867,12 @@ async function notifyDeliveryPersonsInCenter(center, orderId, title, message) {
 function normalizeSellerRecord(record) {
     if (!record || typeof record !== 'object') return null;
     const normalized = { ...record };
-    normalized.name = normalized.name || normalized.full_name || normalized.shop_name || normalized.store_name || normalized.display_name || 'بائع غير معروف';
-    normalized.phone = normalized.phone || normalized.mobile || normalized.phone_number || 'غير متوفر';
-    const addressParts = [normalized.governorate, normalized.center, normalized.village, normalized.address, normalized.street_address, normalized.shop_address].filter(part => typeof part === 'string' ? part.trim() : part);
-    normalized.address = addressParts.join(' - ') || 'عنوان البائع غير محدد';
-    normalized.center = normalized.center || 'غير محدد';
-    normalized.governorate = normalized.governorate || 'غير محدد';
+    normalized.name = normalized.name || normalized.full_name || normalized.shop_name || normalized.store_name || normalized.display_name || normalized.seller_name || 'بائع غير معروف';
+    normalized.phone = normalized.phone || normalized.mobile || normalized.phone_number || normalized.seller_phone || 'غير متوفر';
+    const addressParts = [normalized.governorate, normalized.center, normalized.village, normalized.address, normalized.street_address, normalized.shop_address, normalized.seller_address].filter(part => typeof part === 'string' ? part.trim() : part);
+    normalized.address = addressParts.join(' - ') || normalized.seller_address || 'عنوان البائع غير محدد';
+    normalized.center = normalized.center || normalized.seller_center || 'غير محدد';
+    normalized.governorate = normalized.governorate || normalized.seller_governorate || 'غير محدد';
     return normalized;
 }
 
@@ -869,13 +905,23 @@ async function hydrateOrderSellerData(orders) {
     orders.forEach(order => {
         const resolvedSellerId = order.seller_id || (order.product_id && productMap.get(order.product_id)?.user_id);
         const mappedSeller = order.seller && order.seller.id ? normalizeSellerRecord(order.seller) : null;
-        const seller = mappedSeller || (resolvedSellerId && sellerMap.get(resolvedSellerId)) || {
+        const sellerFromMap = resolvedSellerId ? sellerMap.get(resolvedSellerId) : null;
+        // Snapshot fields stored on orders (added by migration) can be used when user_data is not readable due to RLS
+        const orderSellerSnapshot = {
+            name: order.seller_name || null,
+            phone: order.seller_phone || null,
+            center: order.seller_center || null,
+            governorate: order.seller_governorate || null,
+            address: order.seller_address || null
+        };
+        // Prefer live seller data (mappedSeller), then sellerFromMap (from user_data), then order snapshot, then sensible fallback
+        const seller = mappedSeller || sellerFromMap || (orderSellerSnapshot.name || orderSellerSnapshot.phone || orderSellerSnapshot.address || orderSellerSnapshot.center || orderSellerSnapshot.governorate ? orderSellerSnapshot : {
             name: 'بائع غير معروف',
             phone: 'غير متوفر',
             center: order.center || 'غير محدد',
             governorate: order.governorate || 'غير محدد',
             address: order.shipping_address || 'عنوان البائع غير محدد'
-        };
+        });
         order.seller = normalizeSellerRecord(seller) || seller;
         order.products = (order.product_id && productMap.get(order.product_id)) || { name: 'منتج غير معروف', image_url: null };
     });
