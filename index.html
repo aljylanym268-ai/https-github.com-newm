@@ -1337,8 +1337,10 @@ if (session) {
                 // إعادة تحميل بيانات المستخدم بعد تطبيق نوع الحساب
                 await loadUserData();
             }
-            appState.currentScreen = appState.userData.account_type === 'seller' ? 'sellerDashboardScreen' :
-                                     (appState.userData.account_type === 'delivery' ? 'deliveryDashboardScreen' :
+            const isApprovedSeller = appState.userData.account_type === 'seller' && (appState.userData.status === 'approved' || !appState.userData.status);
+            const isApprovedDelivery = appState.userData.account_type === 'delivery' && (appState.userData.status === 'approved' || !appState.userData.status);
+            appState.currentScreen = isApprovedSeller ? 'sellerDashboardScreen' :
+                                     (isApprovedDelivery ? 'deliveryDashboardScreen' :
                                      (appState.userData.account_type === 'founder' ? 'founderDashboardScreen' :
                                      'homeScreen'));
         } else {
@@ -1442,11 +1444,11 @@ if (session) {
                 updateProfileLocation();
             }
             toggleLoginMenu(!!appState.user);
-            const isSeller = appState.userData?.account_type === 'seller';
-            const isDelivery = appState.userData?.account_type === 'delivery';
+            const isApprovedSeller = appState.userData?.account_type === 'seller' && (appState.userData?.status === 'approved' || !appState.userData?.status);
+            const isApprovedDelivery = appState.userData?.account_type === 'delivery' && (appState.userData?.status === 'approved' || !appState.userData?.status);
             const isFounder = appState.userData?.account_type === 'founder';
-            toggleSellerMenuItem(isSeller);
-            toggleDeliveryMenuItem(isDelivery);
+            toggleSellerMenuItem(isApprovedSeller);
+            toggleDeliveryMenuItem(isApprovedDelivery);
             toggleFounderMenuItem(isFounder);
             addInputInteractions();
 
@@ -1474,14 +1476,16 @@ if (session) {
                 }
                 toggleLoginMenu(true);
                 const accountType = appState.userData?.account_type || 'client';
-                toggleSellerMenuItem(accountType === 'seller');
-                toggleDeliveryMenuItem(accountType === 'delivery');
+                const isApprovedSeller = accountType === 'seller' && (appState.userData?.status === 'approved' || !appState.userData?.status);
+                const isApprovedDelivery = accountType === 'delivery' && (appState.userData?.status === 'approved' || !appState.userData?.status);
+                toggleSellerMenuItem(isApprovedSeller);
+                toggleDeliveryMenuItem(isApprovedDelivery);
                 toggleFounderMenuItem(accountType === 'founder');
                 await updateCartBadgeFromDB();
 
                 let targetScreen = 'homeScreen';
-                if (accountType === 'seller') targetScreen = 'sellerDashboardScreen';
-                else if (accountType === 'delivery') targetScreen = 'deliveryDashboardScreen';
+                if (isApprovedSeller) targetScreen = 'sellerDashboardScreen';
+                else if (isApprovedDelivery) targetScreen = 'deliveryDashboardScreen';
                 else if (accountType === 'founder') targetScreen = 'founderDashboardScreen';
                 showScreen(targetScreen);
                 showToast('تم تسجيل الدخول بنجاح', 'success');

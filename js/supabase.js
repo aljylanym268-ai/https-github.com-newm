@@ -1064,18 +1064,27 @@ async function loadUserData() {
         };
 
         if (error) {
-            console.error('خطأ في جلب بيانات المستخدم:', error);
-            const { error: upsertError } = await supabaseClient.from('user_data').upsert(defaultData);
-            if (upsertError) {
-                console.error('فشل إنشاء سجل المستخدم:', upsertError);
-                appState.userData = defaultData;
-            } else {
-                appState.userData = defaultData;
+            const isPermissionIssue = error?.code === '42501' || /permission denied|does not exist|not exist|table .* not found/i.test(String(error?.message || ''));
+            console.warn('تم استخدام بيانات محلية بدلاً من user_data بسبب:', error?.message || error);
+            appState.userData = defaultData;
+            if (!isPermissionIssue) {
+                try {
+                    const { error: upsertError } = await supabaseClient.from('user_data').upsert(defaultData);
+                    if (!upsertError) {
+                        appState.userData = { ...defaultData, ...(await supabaseClient.from('user_data').select('*').eq('id', appState.user.id).maybeSingle()).data || {} };
+                    }
+                } catch (upsertCatch) {
+                    console.warn('تعذر إنشاء user_data محليًا:', upsertCatch);
+                }
             }
         } else if (data) {
             appState.userData = data;
         } else {
-            await supabaseClient.from('user_data').upsert(defaultData);
+            try {
+                await supabaseClient.from('user_data').upsert(defaultData);
+            } catch (insertErr) {
+                console.warn('تعذر إنشاء سجل user_data، سيتم العمل مع بيانات محلية:', insertErr);
+            }
             appState.userData = defaultData;
         }
 
@@ -1110,12 +1119,12 @@ async function loadUserData() {
         updateWelcomeLocation();
         updateProfileLocation();
 
-        const isSeller = appState.userData.account_type === 'seller';
-        const isDelivery = appState.userData.account_type === 'delivery';
+        const isApprovedSeller = appState.userData.account_type === 'seller' && (appState.userData.status === 'approved' || !appState.userData.status);
+        const isApprovedDelivery = appState.userData.account_type === 'delivery' && (appState.userData.status === 'approved' || !appState.userData.status);
         const isFounder = appState.userData.account_type === 'founder';
 
-        toggleSellerMenuItem(isSeller);
-        toggleDeliveryMenuItem(isDelivery);
+        toggleSellerMenuItem(isApprovedSeller);
+        toggleDeliveryMenuItem(isApprovedDelivery);
         toggleFounderMenuItem(isFounder);
 
         if (isSeller) {
@@ -1135,12 +1144,12 @@ async function loadUserData() {
 
     } catch (error) {
         console.error('loadUserData error:', error);
-        showToast('حدث خطأ في تحميل بيانات المستخدم', 'error');
         if (!appState.userData || Object.keys(appState.userData).length === 0) {
             appState.userData = {
                 id: appState.user.id,
                 name: appState.user.email?.split('@')[0] || 'مستخدم',
-                account_type: 'client'
+                account_type: 'client',
+                status: 'approved'
             };
             updateUserInfo();
         }
@@ -2068,6 +2077,11 @@ async function updateDeliveryStatus(userId, status) {
         .select()
         .maybeSingle();
     if (error) throw error;
+    if (data && appState.user?.id === userId) {
+        appState.userData.status = status;
+        const isDelivery = appState.userData.account_type === 'delivery';
+        toggleDeliveryMenuItem(isDelivery && status === 'approved');
+    }
     await logActivity(appState.user.id, `update_delivery_status`, { user_id: userId, status });
     return data;
 }
