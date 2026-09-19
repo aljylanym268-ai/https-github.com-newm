@@ -127,7 +127,10 @@ async function enrichReturnsData(returns) {
     // 1. جلب المنتجات والطلبات أولاً
     const [productsRes, ordersRes] = await Promise.all([
       productIds.length ? supabaseClient.from('products').select('*').in('id', productIds) : { data: [] },
-      orderIds.length ? supabaseClient.from('orders').select('*').in('id', orderIds) : { data: [] }
+      // نجلب الأعمدة المؤكدة فقط، مع seller_* المحفوظة في الطلب لبيانات البائع.
+      orderIds.length ? supabaseClient.from('orders').select(
+        'id, buyer_id, seller_id, product_id, quantity, total_price, status, center, delivery_center, created_at, customer_name, customer_phone, shipping_address, seller_name, seller_phone, seller_address, seller_center, seller_governorate'
+      ).in('id', orderIds) : { data: [] }
     ]);
 
     const productMap = new Map((productsRes.data || []).map(p => [p.id, p]));
@@ -154,23 +157,53 @@ async function enrichReturnsData(returns) {
       }
     });
 
+    // جدول user_data لا يحتوي على كل الأعمدة التي كان الكود يطلبها (village وغيرها)،
+    // وطلب عمود غير موجود يُفشل الاستعلام بالكامل فيرجع فارغاً وتظهر "غير متوفر".
+    // نستخدم نفس الاستراتيجية المُثبتة في صفحة المندوب: أعمدة مؤكدة،
+    // ثم نتدرج للبدائل، ثم نعتمد على seller_* المحفوظة داخل orders.
     const userIds = [...userIdsSet];
-    const usersRes = userIds.length
-      ? await supabaseClient.from('user_data').select('id, name, phone, image_url, center, village, governorate, address').in('id', userIds)
-      : { data: [] };
-
-    const userMap = new Map((usersRes.data || []).map(u => [u.id, u]));
+    let userMap = new Map();
+    if (userIds.length) {
+      const columnSets = [
+        'id, name, phone, image_url, center, governorate, address, username',
+        'id, name, phone, image_url, center, governorate, address',
+        'id, name, phone, center, governorate, address',
+        'id, name, phone, address',
+        'id, name, phone'
+      ];
+      for (const columns of columnSets) {
+        const { data, error } = await supabaseClient
+          .from('user_data')
+          .select(columns)
+          .in('id', userIds);
+        if (!error) {
+          userMap = new Map((data || []).map(u => [u.id, u]));
+          break;
+        }
+      }
+    }
 
     returns.forEach(r => {
       const order = orderMap.get(r.order_id) || {};
       const prod = productMap.get(r.product_id) || {};
       const sellerId = r.seller_id || order.seller_id || prod.user_id;
       const buyerId = r.buyer_id || order.buyer_id;
+      const sellerFromProfile = sellerId ? userMap.get(sellerId) : null;
 
       r.product = prod.id ? prod : { name: 'منتج غير معروف', image_url: null };
       r.order = order;
-      r.buyer = userMap.get(buyerId) || { name: order.customer_name || 'العميل', phone: order.customer_phone || 'غير متوفر', address: order.shipping_address || 'العنوان غير محدد' };
-      r.seller = (sellerId && userMap.get(sellerId)) || { name: 'البائع', phone: 'غير متوفر', center: order.center || 'غير محدد', governorate: order.governorate || 'غير محدد', address: order.shipping_address || 'عنوان البائع غير محدد' };
+      r.buyer = userMap.get(buyerId) || { name: order.customer_name, phone: order.customer_phone, address: order.shipping_address };
+      // بيانات البائع: الأولوية لـ snapshot المخزنة في الطلب (seller_*)،
+      // ثم بيانات user_data إن كانت متاحة، مع إبقاء seller_id ليعمل زر المتجر.
+      r.seller = {
+        ...(sellerFromProfile || {}),
+        id: sellerId || null,
+        name: (sellerFromProfile && sellerFromProfile.name) || order.seller_name || null,
+        phone: (sellerFromProfile && sellerFromProfile.phone) || order.seller_phone || null,
+        center: (sellerFromProfile && sellerFromProfile.center) || order.seller_center || order.delivery_center || order.center || null,
+        governorate: (sellerFromProfile && sellerFromProfile.governorate) || order.seller_governorate || null,
+        address: (sellerFromProfile && sellerFromProfile.address) || order.seller_address || null
+      };
       r.delivery = userMap.get(r.delivery_id) || {};
     });
   } catch (enrichErr) {
@@ -405,6 +438,80 @@ async function assignReturnToCourier(returnId, courierId) {
   return await updateReturnStatus(returnId, 'assigned', { delivery_id: courierId });
 }
 
+// ====== التحقق من أن البائع الحالي يملك طلب الاسترجاع فعلاً ======
+// يعالج حالة كون seller_id في جدول returns فارغاً (null) بينما البائع
+// صاحب الطلب معروف فقط عبر orders.seller_id.
+async function sellerOwnsReturn(returnId, sellerId) {
+  try {
+    const { data: ret } = await supabaseClient
+      .from('returns')
+      .select('id, seller_id, order_id')
+      .eq('id', returnId)
+      .maybeSingle();
+    if (!ret) return false;
+    if (ret.seller_id && ret.seller_id === sellerId) return true;
+    if (ret.order_id) {
+      const { data: ord } = await supabaseClient
+        .from('orders')
+        .select('seller_id')
+        .eq('id', ret.order_id)
+        .maybeSingle();
+      if (ord && ord.seller_id === sellerId) return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn('تعذّر التحقق من ملكية الاسترجاع:', e);
+    return false;
+  }
+}
+
+// ====== تنفيذ تحديث على المرتجع مع كشف الحقيقي عن النجاح ======
+// يعيد عدد السجلات المتأثرة فعلياً (وليس مجرد عدم وجود خطأ).
+async function applyReturnUpdate(returnId, sellerId, updates) {
+  // دالة داخلية للتحقق من تطبيق الحالة فعلاً حتى لو منعت RLS قراءة السطر عائداً
+  const verifyApplied = async () => {
+    if (!updates.status) return false;
+    const { data } = await supabaseClient
+      .from('returns')
+      .select('id, status')
+      .eq('id', returnId)
+      .maybeSingle();
+    return !!(data && data.status === updates.status);
+  };
+
+  // 1) محاولة التحديث المقيّد بالبائع (المسار الآمن الافتراضي)
+  let { data, error } = await supabaseClient
+    .from('returns')
+    .update(updates)
+    .eq('id', returnId)
+    .eq('seller_id', sellerId)
+    .select('id');
+
+  if (error) throw error;
+  if (data && data.length > 0) return data.length;
+  // لا سطر عائد: إما لا يوجد تطابق (seller_id فارغ) أو RLS لا يعيد القراءة
+  if (await verifyApplied()) return 1;
+
+  // 2) لم ينجح التحديث المقيّد: نتحقق من الملكية عبر الطلب ثم نحدّث بالمعرّف فقط
+  const owns = await sellerOwnsReturn(returnId, sellerId);
+  if (!owns) {
+    const permErr = new Error('لا يمكنك تعديل هذا الطلب — لا تملك صلاحية عليه.');
+    permErr.code = 'no_permission';
+    throw permErr;
+  }
+
+  ({ data, error } = await supabaseClient
+    .from('returns')
+    .update({ ...updates })
+    .eq('id', returnId)
+    .select('id'));
+
+  if (error) throw error;
+  if (data && data.length > 0) return data.length;
+  // تحقق نهائي عبر إعادة قراءة الحالة
+  return (await verifyApplied()) ? 1 : 0;
+}
+
 // ====== قبول الاسترجاع من البائع ======
 async function approveReturn(returnId, sellerNotes = '') {
   if (!appState.user) {
@@ -420,17 +527,16 @@ async function approveReturn(returnId, sellerNotes = '') {
       seller_notes: sellerNotes || null,
       rejection_reason: null
     };
-    const { error } = await supabaseClient
-      .from('returns')
-      .update(updates)
-      .eq('id', returnId)
-      .eq('seller_id', appState.user.id);
+    const affected = await applyReturnUpdate(returnId, appState.user.id, updates);
 
-    if (error) throw error;
+    if (!affected) {
+      showToast('تعذّر تحديث الطلب — لم يتم العثور على مرتجع مطابق.', 'error');
+      return false;
+    }
 
     // إشعار للعميل
-    const { data: ret } = await supabaseClient.from('returns').select('buyer_id').eq('id', returnId).single();
-    if (ret) {
+    const { data: ret } = await supabaseClient.from('returns').select('buyer_id').eq('id', returnId).maybeSingle();
+    if (ret && ret.buyer_id) {
       await sendNotification(
         ret.buyer_id,
         '✅ تم قبول طلب الاسترجاع',
@@ -467,16 +573,15 @@ async function rejectReturn(returnId, rejectionReason) {
       rejection_reason: rejectionReason.trim(),
       seller_notes: null
     };
-    const { error } = await supabaseClient
-      .from('returns')
-      .update(updates)
-      .eq('id', returnId)
-      .eq('seller_id', appState.user.id);
+    const affected = await applyReturnUpdate(returnId, appState.user.id, updates);
 
-    if (error) throw error;
+    if (!affected) {
+      showToast('تعذّر تحديث الطلب — لم يتم العثور على مرتجع مطابق.', 'error');
+      return false;
+    }
 
-    const { data: ret } = await supabaseClient.from('returns').select('buyer_id').eq('id', returnId).single();
-    if (ret) {
+    const { data: ret } = await supabaseClient.from('returns').select('buyer_id').eq('id', returnId).maybeSingle();
+    if (ret && ret.buyer_id) {
       await sendNotification(
         ret.buyer_id,
         '❌ تم رفض طلب الاسترجاع',
@@ -623,15 +728,15 @@ async function displayDeliveryReturns() {
           const seller = ret.seller || {};
           const order = ret.order || {};
 
-          const sellerName = seller.name || seller.full_name || 'البائع';
+          const sellerName = seller.name || seller.full_name || '';
           const sellerPhone = seller.phone || '';
-          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || 'غير محدد';
+          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || '';
           const sellerImage = seller.image_url ? `<img src="${seller.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-store" style="font-size:1.1rem; color:#f57c00;"></i>';
           const sellerId = seller.id || ret.seller_id;
 
-          const buyerName = buyer.name || order.customer_name || 'العميل';
+          const buyerName = buyer.name || order.customer_name || '';
           const buyerPhone = buyer.phone || order.customer_phone || '';
-          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || 'العنوان غير محدد';
+          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || '';
           const buyerImage = buyer.image_url ? `<img src="${buyer.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-user" style="font-size:1.1rem; color:#1976d2;"></i>';
 
           const returnFee = ret.return_fee || 20;
@@ -671,7 +776,7 @@ async function displayDeliveryReturns() {
                   <span><strong>الاسم:</strong> ${escapeHTML(sellerName)}</span>
                 </div>
                 <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span><strong>📞 رقم هاتف البائع:</strong> <a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone || 'غير متوفر')}</a></span>
+                  <span><strong>📞 رقم هاتف البائع:</strong> ${sellerPhone ? `<a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone)}</a>` : ''}</span>
                   ${sellerPhone ? `
                     <a href="tel:${sellerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
                     <a href="https://wa.me/${sellerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
@@ -691,7 +796,7 @@ async function displayDeliveryReturns() {
                   <span><strong>الاسم:</strong> ${escapeHTML(buyerName)}</span>
                 </div>
                 <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span><strong>📞 رقم هاتف العميل:</strong> <a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone || 'غير متوفر')}</a></span>
+                  <span><strong>📞 رقم هاتف العميل:</strong> ${buyerPhone ? `<a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone)}</a>` : ''}</span>
                   ${buyerPhone ? `
                     <a href="tel:${buyerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
                     <a href="https://wa.me/${buyerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
@@ -741,15 +846,15 @@ async function displayDeliveryReturns() {
           const seller = ret.seller || {};
           const order = ret.order || {};
 
-          const sellerName = seller.name || seller.full_name || 'البائع';
+          const sellerName = seller.name || seller.full_name || '';
           const sellerPhone = seller.phone || '';
-          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || 'غير محدد';
+          const sellerAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || '';
           const sellerImage = seller.image_url ? `<img src="${seller.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-store" style="font-size:1.1rem; color:#f57c00;"></i>';
           const sellerId = seller.id || ret.seller_id;
 
-          const buyerName = buyer.name || order.customer_name || 'العميل';
+          const buyerName = buyer.name || order.customer_name || '';
           const buyerPhone = buyer.phone || order.customer_phone || '';
-          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || 'العنوان غير محدد';
+          const buyerAddress = order.shipping_address || [buyer.governorate, buyer.center, buyer.village, buyer.address].filter(Boolean).join(' - ') || buyer.address || '';
           const buyerImage = buyer.image_url ? `<img src="${buyer.image_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fas fa-user" style="font-size:1.1rem; color:#1976d2;"></i>';
 
           const returnFee = ret.return_fee || 20;
@@ -841,7 +946,7 @@ async function displayDeliveryReturns() {
                   <span><strong>الاسم:</strong> ${escapeHTML(sellerName)}</span>
                 </div>
                 <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span><strong>📞 رقم هاتف البائع:</strong> <a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone || 'غير متوفر')}</a></span>
+                  <span><strong>📞 رقم هاتف البائع:</strong> ${sellerPhone ? `<a href="tel:${sellerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(sellerPhone)}</a>` : ''}</span>
                   ${sellerPhone ? `
                     <a href="tel:${sellerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
                     <a href="https://wa.me/${sellerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
@@ -861,7 +966,7 @@ async function displayDeliveryReturns() {
                   <span><strong>الاسم:</strong> ${escapeHTML(buyerName)}</span>
                 </div>
                 <div style="font-size:0.9rem; margin-bottom:5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span><strong>📞 رقم هاتف العميل:</strong> <a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone || 'غير متوفر')}</a></span>
+                  <span><strong>📞 رقم هاتف العميل:</strong> ${buyerPhone ? `<a href="tel:${buyerPhone}" style="color:#1a237e; font-weight:bold; direction:ltr; display:inline-block; font-size:1rem;">${escapeHTML(buyerPhone)}</a>` : ''}</span>
                   ${buyerPhone ? `
                     <a href="tel:${buyerPhone}" style="background:#1a237e; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-phone"></i> اتصال</a>
                     <a href="https://wa.me/${buyerPhone}" target="_blank" style="background:#25D366; color:#fff; padding:3px 10px; border-radius:6px; text-decoration:none; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px;"><i class="fab fa-whatsapp"></i> واتساب</a>
@@ -907,6 +1012,10 @@ async function displaySellerReturns() {
   const container = document.getElementById('sellerReturnsList');
   if (!container) return;
 
+  // تصفير التحديد عند إعادة العرض
+  if (!appState.seller) appState.seller = {};
+  appState.seller.selectedReturns = new Set();
+
   showLoading(true);
   try {
     const returns = await loadSellerReturns(appState.user.id);
@@ -920,7 +1029,23 @@ async function displaySellerReturns() {
       return;
     }
 
-    container.innerHTML = '';
+    // شريط الحذف الجماعي
+    const bulkBarHtml = `
+      <div id="sellerBulkBar" style="display:none; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fff3f3; border:1px solid #f44336; border-radius:10px; padding:10px 14px; margin-bottom:14px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:bold; color:#b71c1c;">
+          <input type="checkbox" id="sellerSelectAll" onchange="toggleSelectAllSellerReturns(this.checked)" style="width:18px; height:18px; cursor:pointer;">
+          تحديد الكل
+        </label>
+        <span style="color:#b71c1c; font-weight:bold;">
+          <i class="fas fa-trash-alt"></i> محدد: <span id="sellerBulkCount">0</span>
+        </span>
+        <button onclick="deleteSelectedSellerReturns()" style="background:#d32f2f; color:#fff; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold;">
+          <i class="fas fa-trash-alt"></i> حذف المحدد
+        </button>
+      </div>
+    `;
+
+    container.innerHTML = bulkBarHtml;
     returns.forEach(ret => {
       const card = document.createElement('div');
       card.className = 'return-card';
@@ -956,13 +1081,25 @@ async function displaySellerReturns() {
         `;
       }
 
+      // زر الحذف الفردي يظهر دائماً لكل مرتجع
+      actionsHtml += `
+        <div style="margin-top:10px;">
+          <button onclick="deleteSellerReturnFromUI('${ret.id}')" style="background:#d32f2f; color:#fff; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; font-weight:bold; width:100%;">
+            <i class="fas fa-trash-alt"></i> حذف المرتجع
+          </button>
+        </div>
+      `;
+
       const imagesHtml = ret.images && ret.images.length > 0
         ? `<div class="return-images-preview">${ret.images.map(img => `<img src="${img}" loading="lazy" onclick="openImageModal('${img}')">`).join('')}</div>`
         : '';
 
       card.innerHTML = `
         <div class="return-card-header">
-          <span class="return-id">#${ret.id.slice(0,8)}</span>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" class="seller-return-checkbox" data-return-id="${ret.id}" onchange="toggleSellerReturnSelection('${ret.id}', this)" style="width:18px; height:18px; cursor:pointer;">
+            <span class="return-id">#${ret.id.slice(0,8)}</span>
+          </label>
           <span class="return-status ${ret.status}">${statusText}</span>
         </div>
         <div class="return-card-body">
@@ -1120,6 +1257,127 @@ async function confirmRejectReturn() {
   }
 }
 
+// ====== حذف مرتجع واحد (من لوحة البائع) ======
+async function deleteSellerReturn(returnId) {
+  if (!returnId) return false;
+  if (!confirm('هل أنت متأكد من حذف هذا المرتجع نهائياً؟')) return false;
+
+  try {
+    // التحقق من الملكية عبر البائع المباشر أو عبر الطلب المرتبط
+    const owns = await sellerOwnsReturn(returnId, appState.user.id);
+    if (!owns) {
+      showToast('لا يمكنك حذف هذا الطلب — لا تملك صلاحية عليه.', 'error');
+      return false;
+    }
+
+    const { data, error } = await supabaseClient
+      .from('returns')
+      .delete()
+      .eq('id', returnId)
+      .select('id');
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      showToast('تعذّر الحذف — لم يتم العثور على مرتجع مطابق.', 'error');
+      return false;
+    }
+
+    showToast('🗑️ تم حذف المرتجع بنجاح', 'success');
+    return true;
+  } catch (err) {
+    showToast(err.message, 'error');
+    return false;
+  }
+}
+
+// حذف مرتجع مفرد من الواجهة
+async function deleteSellerReturnFromUI(returnId) {
+  showLoading(true);
+  try {
+    const ok = await deleteSellerReturn(returnId);
+    if (ok) await displaySellerReturns();
+  } finally {
+    showLoading(false);
+  }
+}
+
+// تبديل تحديد كارت مرتجع للجماعي
+function toggleSellerReturnSelection(returnId, checkbox) {
+  if (!appState.seller) appState.seller = {};
+  if (!appState.seller.selectedReturns) appState.seller.selectedReturns = new Set();
+  const set = appState.seller.selectedReturns;
+  if (checkbox.checked) set.add(returnId);
+  else set.delete(returnId);
+  updateSellerBulkBar();
+}
+
+// تحديد/إلغاء تحديد الكل
+function toggleSelectAllSellerReturns(checked) {
+  if (!appState.seller) appState.seller = {};
+  if (!appState.seller.selectedReturns) appState.seller.selectedReturns = new Set();
+  const set = appState.seller.selectedReturns;
+  const boxes = document.querySelectorAll('.seller-return-checkbox');
+  boxes.forEach(box => {
+    box.checked = checked;
+    const id = box.getAttribute('data-return-id');
+    if (checked) set.add(id);
+    else set.delete(id);
+  });
+  updateSellerBulkBar();
+}
+
+// تحديث شريط الحذف الجماعي
+function updateSellerBulkBar() {
+  const bar = document.getElementById('sellerBulkBar');
+  if (!bar) return;
+  const set = appState.seller?.selectedReturns || new Set();
+  const count = set.size;
+  const countEl = document.getElementById('sellerBulkCount');
+  if (countEl) countEl.textContent = count;
+  bar.style.display = count > 0 ? 'flex' : 'none';
+  const selectAll = document.getElementById('sellerSelectAll');
+  if (selectAll) {
+    const total = document.querySelectorAll('.seller-return-checkbox').length;
+    selectAll.checked = total > 0 && count === total;
+  }
+}
+
+// حذف جماعي للمرتجعات المحددة
+async function deleteSelectedSellerReturns() {
+  const set = appState.seller?.selectedReturns || new Set();
+  const ids = Array.from(set);
+  if (ids.length === 0) {
+    showToast('لم تحدد أي مرتجع للحذف', 'warning');
+    return;
+  }
+  if (!confirm(`هل أنت متأكد من حذف ${ids.length} مرتجع نهائياً؟`)) return;
+
+  showLoading(true);
+  let deleted = 0;
+  try {
+    // نتأكد من الملكية ثم نحذف كل سجل على حدة (لتجنب حذف سجلات لا يملكها البائع)
+    for (const id of ids) {
+      const owns = await sellerOwnsReturn(id, appState.user.id);
+      if (!owns) continue;
+      const { data, error } = await supabaseClient
+        .from('returns')
+        .delete()
+        .eq('id', id)
+        .select('id');
+      if (!error && data && data.length > 0) deleted++;
+    }
+
+    appState.seller.selectedReturns = new Set();
+    await displaySellerReturns();
+    showToast(`🗑️ تم حذف ${deleted} مرتجع بنجاح`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
 // ====== تصدير الدوال ======
 window.createReturn = createReturn;
 window.enrichReturnsData = enrichReturnsData;
@@ -1144,3 +1402,8 @@ window.clearCompletedDeliveryReturns = clearCompletedDeliveryReturns;
 window.approveReturnFromUI = approveReturnFromUI;
 window.showRejectReasonModal = showRejectReasonModal;
 window.confirmRejectReturn = confirmRejectReturn;
+window.deleteSellerReturn = deleteSellerReturn;
+window.deleteSellerReturnFromUI = deleteSellerReturnFromUI;
+window.toggleSellerReturnSelection = toggleSellerReturnSelection;
+window.toggleSelectAllSellerReturns = toggleSelectAllSellerReturns;
+window.deleteSelectedSellerReturns = deleteSelectedSellerReturns;

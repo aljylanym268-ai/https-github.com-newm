@@ -1127,7 +1127,7 @@ async function loadUserData() {
         toggleDeliveryMenuItem(isApprovedDelivery);
         toggleFounderMenuItem(isFounder);
 
-        if (isSeller) {
+        if (isApprovedSeller) {
             if (typeof addSellerStoreTools === 'function') {
                 setTimeout(() => addSellerStoreTools(), 500);
             }
@@ -2077,6 +2077,9 @@ async function updateDeliveryStatus(userId, status) {
         .select()
         .maybeSingle();
     if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    // بدون هذا التحقق تظهر رسالة نجاح وهمية والحالة لا تتغير فعلياً.
+    if (!data) throw new Error('لم يتم تحديث حالة المندوب؛ تأكد من صلاحيات المؤس على user_data (RLS).');
     if (data && appState.user?.id === userId) {
         appState.userData.status = status;
         const isDelivery = appState.userData.account_type === 'delivery';
@@ -2117,6 +2120,8 @@ async function updateClientStatus(userId, status) {
         .select()
         .maybeSingle();
     if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    if (!data) throw new Error('لم يتم تحديث حالة العميل؛ تأكد من صلاحيات المؤس على user_data (RLS).');
     await logActivity(appState.user.id, `update_client_status`, { user_id: userId, status });
     return data;
 }
@@ -2173,6 +2178,8 @@ async function updateSellerStatus(userId, status) {
         .select()
         .maybeSingle();
     if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    if (!data) throw new Error('لم يتم تحديث حالة البائع؛ تأكد من صلاحيات المؤس على user_data (RLS).');
     await logActivity(appState.user.id, `update_seller_status`, { user_id: userId, status });
     return data;
 }

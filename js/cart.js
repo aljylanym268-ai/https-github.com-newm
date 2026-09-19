@@ -867,63 +867,93 @@ async function notifyDeliveryPersonsInCenter(center, orderId, title, message) {
 function normalizeSellerRecord(record) {
     if (!record || typeof record !== 'object') return null;
     const normalized = { ...record };
-    normalized.name = normalized.name || normalized.full_name || normalized.shop_name || normalized.store_name || normalized.display_name || normalized.seller_name || 'بائع غير معروف';
-    normalized.phone = normalized.phone || normalized.mobile || normalized.phone_number || normalized.seller_phone || 'غير متوفر';
+    normalized.name = normalized.name || normalized.full_name || normalized.shop_name || normalized.store_name || normalized.display_name || normalized.seller_name || null;
+    normalized.phone = normalized.phone || normalized.mobile || normalized.phone_number || normalized.seller_phone || null;
     const addressParts = [normalized.governorate, normalized.center, normalized.village, normalized.address, normalized.street_address, normalized.shop_address, normalized.seller_address].filter(part => typeof part === 'string' ? part.trim() : part);
-    normalized.address = addressParts.join(' - ') || normalized.seller_address || 'عنوان البائع غير محدد';
-    normalized.center = normalized.center || normalized.seller_center || 'غير محدد';
-    normalized.governorate = normalized.governorate || normalized.seller_governorate || 'غير محدد';
+    normalized.address = addressParts.join(' - ') || null;
+    normalized.center = normalized.center || normalized.seller_center || null;
+    normalized.governorate = normalized.governorate || normalized.seller_governorate || null;
     return normalized;
+}
+
+// ========== جلب بيانات البائعين من الأعمدة المؤكدة فقط ==========
+// جدول user_data في هذا المشروع لا يحتوي على village / street_address /
+// shop_address / full_name / shop_name / store_name / display_name / mobile /
+// phone_number، وطلب أي عمود غير موجود يُفشل الاستعلام بالكامل.
+// لذلك نجرب قائمة كاملة، ثم نتدرج إلى الأعمدة المؤكدة فقط.
+async function fetchSellerProfiles(sellerIds) {
+    const columnSets = [
+        'id, name, phone, center, governorate, address, image_url, username',
+        'id, name, phone, center, governorate, address, image_url',
+        'id, name, phone, center, governorate, address',
+        'id, name, phone, address',
+        'id, name, phone'
+    ];
+    let lastError = null;
+    for (const columns of columnSets) {
+        const { data, error } = await supabaseClient
+            .from('user_data')
+            .select(columns)
+            .in('id', sellerIds);
+        if (!error) {
+            return { map: new Map((data || []).map(seller => [seller.id, normalizeSellerRecord(seller)])), error: null };
+        }
+        lastError = error;
+    }
+    return { map: new Map(), error: lastError };
 }
 
 async function hydrateOrderSellerData(orders) {
     if (!orders || !orders.length) return orders || [];
 
+    // الطلب الحالي يستخدم product_id مباشرة (لا يوجد order_items في هذا التدفق).
+    // نمرر من الطلب إلى المنتج ثم user_data، مع دعم snapshot القديم داخل orders.
     const productIds = [...new Set(orders.map(order => order.product_id).filter(Boolean))];
     let productMap = new Map();
     if (productIds.length) {
-        const { data: products, error: prodError } = await supabaseClient.from('products').select('id, user_id, name, image_url').in('id', productIds);
+        const { data: products, error: prodError } = await supabaseClient
+            .from('products')
+            .select('id, user_id, name, image_url, images, price')
+            .in('id', productIds);
         if (!prodError && products) {
             productMap = new Map(products.map(product => [product.id, product]));
+        } else if (prodError) {
+            console.warn('⚠️ [hydrateOrderSellerData] فشل جلب المنتجات:', prodError);
         }
     }
 
     const sellerIds = [...new Set(orders.map(order => order.seller_id || (order.product_id && productMap.get(order.product_id)?.user_id)).filter(Boolean))];
     let sellerMap = new Map();
     if (sellerIds.length) {
-        const { data: sellers, error: sellerError } = await supabaseClient
-            .from('user_data')
-            .select('id, name, full_name, shop_name, store_name, display_name, phone, mobile, phone_number, image_url, center, village, governorate, address, street_address, shop_address, city')
-            .in('id', sellerIds);
-        if (!sellerError && sellers) {
-            sellerMap = new Map(sellers.map(seller => [seller.id, normalizeSellerRecord(seller)]));
-        } else {
-            console.warn('⚠️ [hydrateOrderSellerData] فشل جلب بيانات البائعين:', sellerError);
+        const sellerProfile = await fetchSellerProfiles(sellerIds);
+        if (sellerProfile.error) {
+            console.warn('⚠️ [hydrateOrderSellerData] فشل جلب بيانات البائعين:', sellerProfile.error);
         }
+        sellerMap = sellerProfile.map;
     }
 
     orders.forEach(order => {
         const resolvedSellerId = order.seller_id || (order.product_id && productMap.get(order.product_id)?.user_id);
         const mappedSeller = order.seller && order.seller.id ? normalizeSellerRecord(order.seller) : null;
         const sellerFromMap = resolvedSellerId ? sellerMap.get(resolvedSellerId) : null;
-        // Snapshot fields stored on orders (added by migration) can be used when user_data is not readable due to RLS
-        const orderSellerSnapshot = {
-            name: order.seller_name || null,
-            phone: order.seller_phone || null,
-            center: order.seller_center || null,
-            governorate: order.seller_governorate || null,
-            address: order.seller_address || null
-        };
-        // Prefer live seller data (mappedSeller), then sellerFromMap (from user_data), then order snapshot, then sensible fallback
-        const seller = mappedSeller || sellerFromMap || (orderSellerSnapshot.name || orderSellerSnapshot.phone || orderSellerSnapshot.address || orderSellerSnapshot.center || orderSellerSnapshot.governorate ? orderSellerSnapshot : {
-            name: 'بائع غير معروف',
-            phone: 'غير متوفر',
-            center: order.center || 'غير محدد',
-            governorate: order.governorate || 'غير محدد',
-            address: order.shipping_address || 'عنوان البائع غير محدد'
+        // بيانات snapshot هي المصدر الآمن للطلب المتاح إذا حجبت RLS قراءة user_data قبل الاستلام.
+        const orderSellerSnapshot = normalizeSellerRecord({
+            id: resolvedSellerId,
+            name: order.seller_name,
+            phone: order.seller_phone,
+            center: order.seller_center,
+            governorate: order.seller_governorate,
+            address: order.seller_address
         });
-        order.seller = normalizeSellerRecord(seller) || seller;
-        order.products = (order.product_id && productMap.get(order.product_id)) || { name: 'منتج غير معروف', image_url: null };
+        // ندمج البيانات الحية مع snapshot حتى لا نعيد قيمة فارغة من أحد المصدرين.
+        const seller = {
+            ...(orderSellerSnapshot || {}),
+            ...(sellerFromMap || {}),
+            ...(mappedSeller || {})
+        };
+        order.seller = seller;
+        order.products = (order.product_id && productMap.get(order.product_id)) || {};
+        order.seller_id = resolvedSellerId || order.seller_id || null;
     });
 
     return orders;
@@ -936,7 +966,23 @@ async function loadAvailableOrders() {
     }
     console.log('🔍 جلب الطلبات المتاحة للمركز:', appState.userData.center);
     try {
-        const { data: orders, error } = await supabaseClient.from('orders').select('*').is('delivery_id', null).in('status', ['confirmed', 'prepared']).eq('center', appState.userData.center).order('created_at', { ascending: true });
+        // لا نجلب أعمدة العميل قبل الاستلام حتى لا تصل إلى المتصفح أصلاً.
+        // بيانات البائع المسموح بها قبل الاستلام تأتي من seller_* snapshot داخل orders.
+        // الأعمدة المؤكدة فعلاً في جدول orders.
+        // ملاحظة: لا يوجد payment_method ولا notes في orders، لذلك لا يُطلبان هنا.
+        const availableOrderColumns = [
+            'id', 'product_id', 'seller_id', 'quantity', 'total_price',
+            'delivery_fee', 'status', 'center', 'created_at',
+            'seller_name', 'seller_phone', 'seller_address', 'seller_center', 'seller_governorate',
+            'delivery_id'
+        ].join(', ');
+        const { data: orders, error } = await supabaseClient
+            .from('orders')
+            .select(availableOrderColumns)
+            .is('delivery_id', null)
+            .in('status', ['confirmed', 'prepared'])
+            .eq('center', appState.userData.center)
+            .order('created_at', { ascending: true });
         if (error) throw error;
         console.log(`✅ تم العثور على ${orders?.length || 0} طلب متاح`);
         if (!orders || orders.length === 0) return orders;
@@ -954,7 +1000,7 @@ async function loadMyDeliveryOrders() {
         const buyerIds = [...new Set(hydratedOrders.map(o => o.buyer_id).filter(id => id))];
         let userMap = new Map();
         if (buyerIds.length) {
-            const { data: users, error: userError } = await supabaseClient.from('user_data').select('id, name, phone, image_url, center, village, governorate, address').in('id', buyerIds);
+            const { data: users, error: userError } = await supabaseClient.from('user_data').select('id, name, phone, image_url, center, governorate, address').in('id', buyerIds);
             if (!userError && users) {
                 userMap = new Map(users.map(u => [u.id, u]));
             } else {
@@ -1027,11 +1073,17 @@ async function claimOrder(orderId) {
 
         if (updateError) {
             console.error(`❌ [claimOrder] Update error for order ${orderId}:`, updateError);
+            console.error('❌ [claimOrder] Supabase error details:', {
+                message: updateError.message,
+                details: updateError.details,
+                hint: updateError.hint,
+                code: updateError.code
+            });
             throw updateError;
         }
         if (!updatedOrder) {
             console.warn(`⚠️ [claimOrder] Order ${orderId} was not updated (maybe already taken or status changed)`);
-            showToast('فشل تحديث الطلب، ربما تم استلامه من قبل مندوب آخر أو تغيرت حالته', 'error');
+            showToast('عذراً، تم استلام هذا الطلب بالفعل من مندوب آخر.', 'error');
             return;
         }
         console.log(`✅ [claimOrder] Order ${orderId} claimed successfully by delivery ${appState.user.id}`);
@@ -1306,7 +1358,8 @@ function createOrderCardForDelivery(order, isAvailable) {
     const card = document.createElement('div');
     card.className = 'order-card';
     const product = order.products || {};
-    const imageHtml = product.image_url ? `<img src="${product.image_url}" loading="lazy">` : '📦';
+    const productImage = (Array.isArray(product.images) && product.images[0]) || product.image_url;
+    const imageHtml = productImage ? `<img src="${productImage}" loading="lazy">` : '📦';
 
     // بيانات البائع (نأخذها من order.seller أو نبحث عنها)
     const seller = order.seller || {};
@@ -1320,12 +1373,13 @@ function createOrderCardForDelivery(order, isAvailable) {
     const notes = order.notes || '';
     const deliveryFee = order.delivery_fee || 0;
     const totalPrice = order.total_price || 0;
-    const estimatedTime = 'حوالي 30-45 دقيقة'; // يمكن جلبها من API أو حسابها
+    const estimatedTime = order.estimated_time || order.expected_time || 'يُحدد حسب المسافة';
+    const distance = order.distance || order.distance_km || null;
 
     // --- عنوان البائع التفصيلي (يظهر دائماً في كل الحالات) ---
-    const sellerFullAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ') || seller.address || seller.center || 'عنوان البائع غير محدد';
-    // --- عنوان العميل التفصيلي ---
-    const buyerFullAddress = order.shipping_address || buyer.address || buyer.center || order.center || 'العنوان غير محدد';
+    const sellerFullAddress = [seller.governorate, seller.center, seller.village, seller.address].filter(Boolean).join(' - ');
+    // عنوان العميل لا يستخدم في بطاقة الطلب المتاح، ويظهر فقط بعد الاستلام.
+    const buyerFullAddress = order.shipping_address || buyer.address || buyer.center || order.center || '';
 
     // --- المتغيرات التي ستتغير حسب isAvailable ---
     let buyerPhoneDisplay = '';
@@ -1340,10 +1394,12 @@ function createOrderCardForDelivery(order, isAvailable) {
         // 1. حالة "طلبات متاحة" (قبل الاستلام)
         // الأرقام مخفية، والعنوان الكامل غير معروض، ولا توجد أزرار اتصال
         // =====================================================
-        buyerPhoneDisplay = maskPhone(buyer.phone || order.customer_phone); // مخفي جزئياً
-        buyerAddressDisplay = buyerFullAddress; // العنوان التفصيلي
-        sellerPhoneDisplay = maskPhone(seller.phone); // مخفي جزئياً
-        sellerAddressDisplay = sellerFullAddress; // العنوان التفصيلي للبائع
+        // قبل الاستلام لا نعرض أي بيانات تعريفية للعميل، حتى لو كانت موجودة في order.
+        buyerPhoneDisplay = '';
+        buyerAddressDisplay = '';
+        // هاتف البائع جزء من معلومات قرار الاستلام، ويُعرض فقط إذا أعاد المصدر قيمة مسموحة.
+        sellerPhoneDisplay = seller.phone || '';
+        sellerAddressDisplay = sellerFullAddress;
 
         // زر الإجراء الوحيد: استلام الطلب (مع معلومات كافية عن المنتج والمنطقة)
         actionButtonsHtml = `
@@ -1391,14 +1447,14 @@ function createOrderCardForDelivery(order, isAvailable) {
         contactButtonsHtml = `
             <div style="margin-top:10px; padding:10px; background:#f5f7fa; border-radius:8px; border:1px solid #e0e0e0;">
                 <div style="font-weight:bold; color:#1976d2; margin-bottom:4px;"><i class="fas fa-user"></i> بيانات العميل:</div>
-                <div><strong>الاسم:</strong> ${escapeHTML(buyer.name || order.customer_name || 'غير معروف')}</div>
+                <div><strong>الاسم:</strong> ${escapeHTML(buyer.name || order.customer_name || '')}</div>
                 <div><strong>الهاتف:</strong> <span dir="ltr">${escapeHTML(buyerPhoneDisplay)}</span></div>
                 <div><strong>العنوان:</strong> ${escapeHTML(buyerAddressDisplay)}</div>
                 ${buyerContact}
             </div>
             <div style="margin-top:8px; padding:10px; background:#fef8e8; border-radius:8px; border:1px solid #ffe0b2;">
                 <div style="font-weight:bold; color:#f57c00; margin-bottom:4px;"><i class="fas fa-store"></i> بيانات البائع:</div>
-                <div><strong>الاسم:</strong> ${escapeHTML(seller.name || 'غير معروف')}</div>
+                <div><strong>الاسم:</strong> ${escapeHTML(seller.name || '')}</div>
                 <div><strong>الهاتف:</strong> <span dir="ltr">${escapeHTML(sellerPhoneDisplay)}</span></div>
                 <div><strong>العنوان:</strong> ${escapeHTML(sellerAddressDisplay)}</div>
                 ${sellerContact}
@@ -1436,16 +1492,16 @@ function createOrderCardForDelivery(order, isAvailable) {
     const sellerInfoHtml = `
         <div style="display:flex; align-items:center; gap:8px; margin:5px 0; font-size:0.9rem; flex-wrap:wrap;">
             ${sellerImage}
-            <span><strong>البائع:</strong> ${escapeHTML(seller.name || 'غير معروف')}</span>
-            <span style="color:#888; font-size:0.8rem;">| الهاتف: ${escapeHTML(sellerPhoneDisplay)}</span>
-            <span style="color:#888; font-size:0.8rem;">📍 ${escapeHTML(sellerAddressDisplay)}</span>
+            <span><strong>البائع:</strong> ${escapeHTML(seller.name || '')}</span>
+            ${sellerPhoneDisplay ? `<span style="color:#888; font-size:0.8rem;">| الهاتف: ${escapeHTML(sellerPhoneDisplay)}</span>` : ''}
+            <span style="color:#888; font-size:0.8rem;">📍 ${escapeHTML(sellerAddressDisplay || '')}</span>
         </div>
     `;
 
-    const buyerInfoHtml = `
+    const buyerInfoHtml = isAvailable ? '' : `
         <div style="display:flex; align-items:center; gap:8px; margin:5px 0; font-size:0.9rem; flex-wrap:wrap;">
             <i class="fas fa-user" style="color:#1976d2;"></i>
-            <span><strong>العميل:</strong> ${escapeHTML(buyer.name || order.customer_name || 'غير معروف')}</span>
+            <span><strong>العميل:</strong> ${escapeHTML(buyer.name || order.customer_name || '')}</span>
             <span style="color:#888; font-size:0.8rem;">| الهاتف: ${escapeHTML(buyerPhoneDisplay)}</span>
             <span style="color:#888; font-size:0.8rem;">📍 ${escapeHTML(buyerAddressDisplay)}</span>
             ${notes ? `<span style="color:#e65100; font-size:0.8rem;">📝 ملاحظات: ${escapeHTML(notes)}</span>` : ''}
@@ -1454,11 +1510,15 @@ function createOrderCardForDelivery(order, isAvailable) {
 
     const deliveryDetailsHtml = `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; background:#faf8f5; padding:8px 12px; border-radius:8px; margin:6px 0; font-size:0.85rem; border:1px solid #eee;">
-            <span><strong>💰 السعر:</strong> ${order.price || product.price || totalPrice || 0} ج.م</span>
-            <span><strong>📦 الكمية:</strong> ${order.quantity}</span>
+            <span><strong>💰 السعر:</strong> ${order.price || product.price || 0} ج.م</span>
+            <span><strong>📦 الكمية:</strong> ${order.quantity || 0}</span>
             <span><strong>🚚 التوصيل:</strong> ${deliveryFee} ج.م</span>
+            <span><strong>🧾 الإجمالي:</strong> ${totalPrice} ج.م</span>
             <span><strong>💳 الدفع:</strong> ${escapeHTML(paymentMethod)}</span>
-            <span style="grid-column: span 2;"><strong>⏱ الوقت المتوقع:</strong> ${estimatedTime}</span>
+            <span><strong>📍 التوصيل إلى:</strong> ${escapeHTML(order.center || '')}</span>
+            ${distance ? `<span><strong>📏 المسافة:</strong> ${escapeHTML(String(distance))} كم</span>` : ''}
+            <span><strong>⏱ الوقت المتوقع:</strong> ${escapeHTML(String(estimatedTime))}</span>
+            ${notes ? `<span style="grid-column:span 2;"><strong>📝 الملاحظات:</strong> ${escapeHTML(notes)}</span>` : ''}
         </div>
     `;
 
