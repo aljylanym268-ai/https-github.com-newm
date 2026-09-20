@@ -454,21 +454,29 @@ async function deleteBuyerOrder(orderId) {
     showLoading(true);
     try {
         // محاولة الحذف الحقيقي من قاعدة البيانات
-        const { data: deleted, error: deleteError } = await supabaseClient
-            .from('orders')
-            .delete()
-            .eq('id', orderId)
-            .select()
-            .maybeSingle();
-
-        if (deleteError) throw deleteError;
+        let deleted = null;
+        let deleteBlocked = false;
+        try {
+            const { data, error: deleteError } = await supabaseClient
+                .from('orders')
+                .delete()
+                .eq('id', orderId)
+                .select()
+                .maybeSingle();
+            if (deleteError) throw deleteError;
+            deleted = data;
+        } catch (dbErr) {
+            // لو منعت سياسة RLS الحذف أو حصل خطأ، نكمل بالإخفاء المحلي
+            console.warn(`⚠️ [deleteBuyerOrder] DB delete failed, hiding locally:`, dbErr?.message || dbErr);
+            deleteBlocked = true;
+        }
 
         if (deleted) {
             console.log(`✅ [deleteBuyerOrder] Order ${orderId} deleted from database`);
             showToast('تم حذف الطلب نهائياً', 'success');
         } else {
             // الصلاحيات (RLS) تمنع الحذف → نحفظ الإخفاء بشكل دائم محلياً
-            console.warn(`⚠️ [deleteBuyerOrder] Delete blocked by RLS, hiding locally for order ${orderId}`);
+            console.warn(`⚠️ [deleteBuyerOrder] Delete blocked (${deleteBlocked ? 'error/RLS' : 'no rows'}), hiding locally for order ${orderId}`);
             hideOrderLocally(orderId);
             showToast('تم حذف الطلب من قائمتك', 'success');
         }

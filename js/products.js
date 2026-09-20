@@ -319,7 +319,10 @@ async function refreshSellerDashboard() {
     } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); }
 }
 function updateSellerStats() {
-    const prodCount = appState.seller.products.length, orderCount = appState.seller.orders.length, revenue = appState.seller.orders.reduce((s, o) => s + (o.total_price || 0), 0);
+    // المبيعات = إجمالي المنتجات فقط (بدون فلوس المندوب / رسوم التوصيل)
+    const ordersForStats = getVisibleSellerOrders(appState.seller.orders);
+    const prodCount = appState.seller.products.length, orderCount = ordersForStats.length;
+    const revenue = ordersForStats.reduce((s, o) => s + (Number(o.total_price || 0) - Number(o.delivery_fee || 0)), 0);
     document.getElementById('sellerProductCount').textContent = prodCount;
     document.getElementById('sellerOrderCount').textContent = orderCount;
     document.getElementById('sellerRevenue').textContent = revenue.toLocaleString() + ' ج.م';
@@ -349,7 +352,7 @@ function filterSellerProducts() { displaySellerProducts(document.getElementById(
 document.querySelectorAll('#productCategoryFilters .filter-btn').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('#productCategoryFilters .filter-btn').forEach(b => b.classList.remove('active')); this.classList.add('active'); appState.seller.filterCategory = this.dataset.category; displaySellerProducts(document.getElementById('sellerProductSearch').value); }); });
 function displaySellerOrders(filterText = '') {
     const container = document.getElementById('sellerOrdersList'); if (!container) return;
-    let filtered = appState.seller.orders;
+    let filtered = getVisibleSellerOrders(appState.seller.orders);
     if (filterText) filtered = filtered.filter(o => o.id.includes(filterText) || (o.customer_name && o.customer_name.includes(filterText)));
     if (appState.seller.filterOrderStatus !== 'all') filtered = filtered.filter(o => o.status === appState.seller.filterOrderStatus);
     container.innerHTML = filtered.length ? '' : '<p style="text-align:center; padding:20px;">لا توجد طلبات</p>';
@@ -357,14 +360,70 @@ function displaySellerOrders(filterText = '') {
         const card = document.createElement('div'); card.className = 'order-card';
         const product = order.products || {};
         const imageHtml = product.image_url ? `<img src="${product.image_url}" loading="lazy">` : '📦';
+        // فلوس المندوب (رسوم التوصيل) + فلوس البائع (قيمة المنتجات فقط)
+        const deliveryFee = Number(order.delivery_fee || 0);
+        const itemsTotal = Number(order.total_price || 0) - deliveryFee;
+        const unitPrice = order.quantity ? itemsTotal / order.quantity : 0;
         let actions = '';
         if (order.status === 'pending') actions = `<button class="product-action-btn edit" onclick="confirmOrderSeller('${order.id}')"><i class="fas fa-check"></i> تأكيد الطلب</button>`;
         else if (order.status === 'confirmed') actions = `<button class="product-action-btn edit" onclick="prepareOrderSeller('${order.id}')"><i class="fas fa-box"></i> تم التجهيز</button>`;
-        card.innerHTML = `<div class="order-header"><span class="order-id">#${order.id.slice(0,8)}</span><span class="order-status ${order.status}">${getStatusText(order.status)}</span></div><div class="order-product"><div class="order-product-image">${imageHtml}</div><div class="order-product-details"><div>${escapeHTML(product.name || 'منتج')}</div><div>${order.total_price} ج.م × ${order.quantity}</div></div></div><div class="order-total">الإجمالي: ${order.total_price} ج.م</div><div class="order-actions">${actions}<button class="product-action-btn" onclick="viewOrderDetails('${order.id}')">تفاصيل</button></div>`;
+        card.innerHTML = `<div class="order-header"><span class="order-id">#${order.id.slice(0,8)}</span><span class="order-status ${order.status}">${getStatusText(order.status)}</span></div><div class="order-product"><div class="order-product-image">${imageHtml}</div><div class="order-product-details"><div>${escapeHTML(product.name || 'منتج')}</div><div><strong>الكمية المطلوبة: ${order.quantity} وحدة</strong></div><div style="font-size:0.82rem; color:#888;">سعر الوحدة: ${unitPrice.toFixed(0)} ج.م</div></div></div><div class="order-total">الإجمالي: ${itemsTotal.toFixed(0)} ج.م</div><div class="order-actions">${actions}<button class="product-action-btn" onclick="viewOrderDetails('${order.id}')">تفاصيل</button><button class="product-action-btn delete" onclick="deleteSellerOrder('${order.id}')"><i class="fas fa-trash"></i> حذف</button></div>`;
         container.appendChild(card);
     });
 }
 function filterSellerOrders() { displaySellerOrders(document.getElementById('sellerOrderSearch').value); }
+
+// ========== حذف طلب من قائمة طلبات البائع ==========
+async function deleteSellerOrder(orderId) {
+    if (!confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) return;
+    showLoading(true);
+    try {
+        let deleted = null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .delete()
+                .eq('id', orderId)
+                .select()
+                .maybeSingle();
+            if (error) throw error;
+            deleted = data;
+        } catch (dbErr) {
+            console.warn(`⚠️ [deleteSellerOrder] DB delete failed:`, dbErr?.message || dbErr);
+        }
+
+        if (deleted) {
+            showToast('تم حذف الطلب نهائياً', 'success');
+        } else {
+            showToast('لا يمكن حذف الطلب؛ تم إخفاؤه من قائمتك', 'success');
+            hideSellerOrderLocally(orderId);
+        }
+
+        appState.seller.orders = (appState.seller.orders || []).filter(o => o.id !== orderId);
+        updateSellerStats();
+        displaySellerOrders(document.getElementById('sellerOrderSearch')?.value || '');
+    } catch (err) {
+        console.error('❌ [deleteSellerOrder] Error:', err);
+        showToast(err.message || 'حدث خطأ أثناء حذف الطلب', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ========== إخفاء طلب البائع محلياً واستبعاده ==========
+function hideSellerOrderLocally(orderId) {
+    try {
+        const hidden = JSON.parse(localStorage.getItem('msaar_hidden_seller_orders') || '[]');
+        if (!hidden.includes(orderId)) hidden.push(orderId);
+        localStorage.setItem('msaar_hidden_seller_orders', JSON.stringify(hidden));
+    } catch (e) { console.warn('تعذر حفظ إخفاء طلب البائع', e); }
+}
+
+function getVisibleSellerOrders(orders) {
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem('msaar_hidden_seller_orders') || '[]'); } catch (e) {}
+    return (orders || []).filter(o => !hidden.includes(o.id));
+}
 document.querySelectorAll('#sellerOrdersTab .filter-btn').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('#sellerOrdersTab .filter-btn').forEach(b => b.classList.remove('active')); this.classList.add('active'); appState.seller.filterOrderStatus = this.dataset.orderStatus; displaySellerOrders(document.getElementById('sellerOrderSearch').value); }); });
 function switchSellerTab(tab) {
     appState.seller.currentTab = tab;
@@ -389,12 +448,12 @@ function showAddProductForm() { if (!appState.user || appState.userData.account_
 function editProduct(id) { const p = appState.seller.products.find(p => p.id === id); if (!p) return; document.getElementById('productModalTitle').textContent = 'تعديل المنتج'; document.getElementById('productName').value = p.name || ''; document.getElementById('productPrice').value = p.price || ''; document.getElementById('productStock').value = p.stock || 1; document.getElementById('productDescription').value = p.description || ''; document.getElementById('productCategory').value = p.category || ''; document.getElementById('productDiscount').value = p.discount || ''; document.getElementById('editingProductId').value = id; document.getElementById('multiImagePreview').innerHTML = ''; document.getElementById('productImages').value = ''; document.getElementById('productModal').classList.add('active'); }
 function confirmDelete(id) { if (confirm('هل أنت متأكد من حذف هذا المنتج؟')) { showLoading(true); deleteProduct(id).then(async () => { showToast('تم الحذف', 'success'); await refreshSellerDashboard(); await loadProductsFromDB(); loadMarketProducts(); loadFeaturedProducts(); }).catch(err => showToast(err.message, 'error')).finally(() => showLoading(false)); } }
 function adjustStock(id) { const p = appState.seller.products.find(p => p.id === id); if (!p) return; const newStock = prompt('أدخل الكمية الجديدة:', p.stock || 0); if (newStock !== null && !isNaN(parseInt(newStock))) { showLoading(true); updateProduct(id, { stock: parseInt(newStock) }).then(() => { showToast('تم تحديث الكمية', 'success'); refreshSellerDashboard(); }).catch(err => showToast(err.message, 'error')).finally(() => showLoading(false)); } }
-function viewOrderDetails(orderId) { const order = appState.seller.orders.find(o => o.id === orderId); if (!order) return; let html = `<p><strong>العميل:</strong> ${order.customer_name || 'غير محدد'}</p><p><strong>الهاتف:</strong> ${order.customer_phone || 'غير محدد'}</p><p><strong>العنوان:</strong> ${order.shipping_address || 'غير محدد'}</p><p><strong>التاريخ:</strong> ${new Date(order.created_at).toLocaleString('ar-EG')}</p><h4 style="margin:15px 0 10px;">المنتجات:</h4>`; const product = order.products || {}; html += `<div style="display:flex; justify-content:space-between;"><span>${escapeHTML(product.name)} x${order.quantity}</span><span>${order.total_price} ج.م</span></div>`; html += `<h3 style="margin-top:15px; color:#1a237e;">الإجمالي: ${order.total_price} ج.م</h3>`; document.getElementById('orderDetails').innerHTML = html; const select = document.getElementById('orderStatusSelect'); select.innerHTML = ['pending','confirmed','prepared','picked_up','in_delivery','delivered','cancelled'].map(s => `<option value="${s}" ${order.status === s ? 'selected' : ''}>${getStatusText(s)}</option>`).join(''); select.dataset.orderId = orderId; document.getElementById('orderModal').classList.add('active'); }
+function viewOrderDetails(orderId) { const order = appState.seller.orders.find(o => o.id === orderId); if (!order) return; let html = `<p><strong>العميل:</strong> ${order.customer_name || 'غير محدد'}</p><p><strong>الهاتف:</strong> ${order.customer_phone || 'غير محدد'}</p><p><strong>العنوان:</strong> ${order.shipping_address || 'غير محدد'}</p><p><strong>التاريخ:</strong> ${new Date(order.created_at).toLocaleString('ar-EG')}</p><h4 style="margin:15px 0 10px;">المنتجات:</h4>`; const product = order.products || {}; const _df = Number(order.delivery_fee || 0); const _items = Number(order.total_price || 0) - _df; html += `<div style="display:flex; justify-content:space-between;"><span>${escapeHTML(product.name)}</span><span>${_items.toFixed(0)} ج.م</span></div>`; html += `<div style="font-size:0.9rem; color:#666; margin-top:2px;"><strong>الكمية المطلوبة: ${order.quantity} وحدة</strong></div>`; html += `<hr style="margin:12px 0; border:none; border-top:1px dashed #ccc;">`; html += `<h3 style="color:#1a237e;">الإجمالي: ${_items.toFixed(0)} ج.م</h3>`; document.getElementById('orderDetails').innerHTML = html; const select = document.getElementById('orderStatusSelect'); select.innerHTML = ['pending','confirmed','prepared','picked_up','in_delivery','delivered','cancelled'].map(s => `<option value="${s}" ${order.status === s ? 'selected' : ''}>${getStatusText(s)}</option>`).join(''); select.dataset.orderId = orderId; document.getElementById('orderModal').classList.add('active'); }
 async function updateOrderStatusFromModal() { const select = document.getElementById('orderStatusSelect'); const orderId = select.dataset.orderId; const newStatus = select.value; showLoading(true); try { await updateOrderStatus(orderId, newStatus); showToast('تم تحديث الحالة', 'success'); closeOrderModal(); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 function closeOrderModal() { document.getElementById('orderModal').classList.remove('active'); }
 function closeProductModal() { document.getElementById('productModal').classList.remove('active'); }
 function showNotifications() { const newOrders = appState.seller.orders.filter(o => o.status === 'pending'); if (newOrders.length === 0) { showToast('لا توجد إشعارات جديدة', 'info'); return; } let msg = 'طلبات جديدة:\n'; newOrders.forEach(o => msg += `- طلب #${o.id.slice(0,8)} بمبلغ ${o.total_price} ج.م\n`); alert(msg); document.getElementById('sellerNotificationBadge').style.display = 'none'; }
-function exportOrdersCSV() { const orders = appState.seller.orders; let csv = 'رقم الطلب,العميل,الهاتف,العنوان,التاريخ,الحالة,الإجمالي\n'; orders.forEach(o => { csv += `${o.id},${o.customer_name || ''},${o.customer_phone || ''},${o.shipping_address || ''},${new Date(o.created_at).toLocaleDateString()},${o.status},${o.total_price}\n`; }); const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'orders.csv'; link.click(); }
+function exportOrdersCSV() { const orders = getVisibleSellerOrders(appState.seller.orders); let csv = 'رقم الطلب,العميل,الهاتف,العنوان,التاريخ,الحالة,الإجمالي\n'; orders.forEach(o => { const items = Number(o.total_price || 0) - Number(o.delivery_fee || 0); csv += `${o.id},${o.customer_name || ''},${o.customer_phone || ''},${o.shipping_address || ''},${new Date(o.created_at).toLocaleDateString()},${o.status},${items.toFixed(0)}\n`; }); const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'orders.csv'; link.click(); }
 async function confirmOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('buyer_id').eq('id', orderId).maybeSingle(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود أو لا يمكن للبائع الوصول إليه'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب؛ أصلح buyer_id في قاعدة البيانات'); const updatedOrder = await updateOrderStatus(orderId, 'confirmed'); if (!updatedOrder) { const { data: currentOrder, error: verifyError } = await supabaseClient.from('orders').select('status').eq('id', orderId).maybeSingle(); if (verifyError) throw verifyError; if (!currentOrder || currentOrder.status !== 'confirmed') throw new Error('تعذر تحديث حالة الطلب؛ تحقق من صلاحيات قاعدة البيانات'); } await sendNotification(order.buyer_id, 'تم تأكيد طلبك', `تم تأكيد طلبك #${orderId.slice(0,8)}`); showToast('تم تأكيد الطلب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 async function prepareOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('*, buyer_id, center').eq('id', orderId).single(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب'); const updatedOrder = await updateOrderStatus(orderId, 'prepared'); if (!updatedOrder) throw new Error('تعذر تحديث حالة الطلب'); await sendNotification(order.buyer_id, 'تم تجهيز طلبك', `طلبك #${orderId.slice(0,8)} جاهز وسيتم توصيله قريباً`); if (order.center) await notifyDeliveryPersonsInCenter(order.center, orderId, 'شحنة جاهزة في منطقتك', `طلب #${orderId.slice(0,8)} جاهز للتوصيل في ${order.center}`); showToast('تم تحديث الحالة إلى "تم التجهيز" وإشعار المناديب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 
@@ -1919,6 +1978,9 @@ window.displaySellerProducts = displaySellerProducts;
 window.displaySellerOrders = displaySellerOrders;
 window.filterSellerProducts = filterSellerProducts;
 window.filterSellerOrders = filterSellerOrders;
+window.deleteSellerOrder = deleteSellerOrder;
+window.hideSellerOrderLocally = hideSellerOrderLocally;
+window.getVisibleSellerOrders = getVisibleSellerOrders;
 window.switchSellerTab = switchSellerTab;
 window.updateAnalytics = updateAnalytics;
 window.showAddProductForm = showAddProductForm;

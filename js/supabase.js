@@ -1002,6 +1002,7 @@ async function logout(showConfirm = true) {
         toggleSellerMenuItem(false);
         toggleDeliveryMenuItem(false);
         toggleFounderMenuItem(false);
+        resetMisarFounderModeOnLogout();
         updateUserInfo(true);
         await loadCart();
         await updateCartBadgeFromDB();
@@ -1034,6 +1035,11 @@ function toggleDeliveryMenuItem(isDelivery) {
 function toggleFounderMenuItem(isFounder) {
     const founderItem = document.getElementById('founderDashboardMenuItem');
     if (founderItem) founderItem.style.display = isFounder ? 'flex' : 'none';
+}
+
+// توافق خلفي: إعادة الاقتراحات لشكلها الافتراضي عند تسجيل الخروج
+function resetMisarFounderModeOnLogout() {
+    if (typeof setMisarFounderMode === 'function') setMisarFounderMode(false);
 }
 
 // ============================================================
@@ -1126,6 +1132,9 @@ async function loadUserData() {
         toggleSellerMenuItem(isApprovedSeller);
         toggleDeliveryMenuItem(isApprovedDelivery);
         toggleFounderMenuItem(isFounder);
+
+        // تفعيل وضع المؤس في المساعد الذكي MISAR AI (سياق واقتراحات إدارية)
+        if (typeof setMisarFounderMode === 'function') setMisarFounderMode(isFounder);
 
         if (isApprovedSeller) {
             if (typeof addSellerStoreTools === 'function') {
@@ -1599,7 +1608,39 @@ async function openFounderProfile() {
 function closeFounderProfile() {
     const founderScreen = document.getElementById('founderProfileScreen');
     if (founderScreen) founderScreen.classList.remove('active');
+    // لو الملف الشخصي الكامل مفتوح فوقها، اقفله معها
+    closeFounderFullProfile();
     openChatbot();
+}
+
+// ============================================================
+// الملف الشخصي الكامل للمؤس (يُفتح بالضغط على الاسم فقط)
+// ============================================================
+function openFounderFullProfile() {
+    const bioScreen = document.getElementById('founderBioScreen');
+    if (!bioScreen) return;
+    bioScreen.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeFounderFullProfile() {
+    const bioScreen = document.getElementById('founderBioScreen');
+    if (!bioScreen) return;
+    bioScreen.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// إغلاق الملف الشخصي بضغطة Escape
+if (!window.__misarFounderBioEscBound) {
+    window.__misarFounderBioEscBound = true;
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            const bioScreen = document.getElementById('founderBioScreen');
+            if (bioScreen && bioScreen.classList.contains('active')) {
+                closeFounderFullProfile();
+            }
+        }
+    });
 }
 function openImageModal(imageSrc) {
     let src = typeof imageSrc === 'string' ? imageSrc : null;
@@ -2454,6 +2495,8 @@ window.sendMessage = sendMessage;
 window.sendSuggestion = sendSuggestion;
 window.openFounderProfile = openFounderProfile;
 window.closeFounderProfile = closeFounderProfile;
+window.openFounderFullProfile = openFounderFullProfile;
+window.closeFounderFullProfile = closeFounderFullProfile;
 window.contactDeveloper = contactDeveloper;
 window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;

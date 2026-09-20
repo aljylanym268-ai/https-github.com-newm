@@ -1,15 +1,61 @@
 // Supabase Edge Function: misar-ai
 // تستخدم Google Gemini عبر السر GEMINI_API_KEY
-// نشرها بـ: supabase functions deploy misar-ai --no-verify-jwt
+// نشرها بـ: supabase functions deploy misar-ai
+//
+// وضع المؤس (mode: "founder"):
+// لا يُقبل إلا إذا كان توكن المستخدم صالحاً وكان account_type = founder أو admin
+// في جدول user_data. التحقق يتم على الخادم بمفتاح service role، فلا يمكن
+// للمستخدم انتحال دور المؤس من المتصفح.
 // ضبط السر: supabase secrets set GEMINI_API_KEY=AQ...
 // @ts-ignore
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+// @ts-ignore
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" }});
+
+/** يتحقق من أن صاحب التوكن مؤسس/مدير فعلاً (التحقق على الخادم). */
+async function verifyFounderRole(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) {
+    console.error("verifyFounderRole: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
+    return false;
+  }
+
+  try {
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const { data: userData, error: userErr } = await admin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      console.error("verifyFounderRole: invalid token", userErr?.message);
+      return false;
+    }
+    const { data: row, error: rowErr } = await admin
+      .from("user_data")
+      .select("account_type")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+    if (rowErr) {
+      console.error("verifyFounderRole: user_data read failed", rowErr.message);
+      return false;
+    }
+    return row?.account_type === "founder" || row?.account_type === "admin";
+  } catch (e) {
+    console.error("verifyFounderRole error:", e);
+    return false;
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -23,9 +69,14 @@ serve(async (req) => {
   }
 
   try {
-    const { messages } = await req.json();
+    const { messages, mode } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages is required" }), { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+    }
+
+    // وضع المؤس: لا يُسمح به إلا لمؤس/مدير حقي وفقاً لجدول user_data
+    if (mode === "founder" && !(await verifyFounderRole(req))) {
+      return json({ error: "founder mode not allowed" }, 403);
     }
 
     // تحويل صيغة OpenAI إلى صيغة Gemini
