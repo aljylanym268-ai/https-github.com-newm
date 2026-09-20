@@ -1221,8 +1221,8 @@
     <div class="founder-profile-screen" id="founderProfileScreen">
         <div class="founder-cover"></div>
         <div class="founder-card">
-            <div class="founder-avatar" onclick="openImageModal()"><img src="https://i.ibb.co/Fb0bXv47/1b7c163c815821997ef4c0271269d86e-0.webp" alt="صورة المؤسس" loading="lazy"></div>
-            <div class="founder-name">م / محمد سعد</div>
+            <div class="founder-avatar" onclick="openImageModal()" title="اضغط لتكبير الصورة"><img src="https://i.ibb.co/Fb0bXv47/1b7c163c815821997ef4c0271269d86e-0.webp" alt="صورة المؤسس" loading="lazy"></div>
+            <button type="button" class="founder-name founder-name-btn" onclick="openFounderFullProfile()" aria-label="عرض الملف الشخصي الكامل للمؤس">م / محمد سعد</button>
             <div class="founder-title">مهندس برمجيات مصري، مؤسس ورئيس شركة Misar Systems</div>
             <div class="founder-bio"><i class="fas fa-quote-right"></i><p>تم تأسيس الشركة عام 2026 بهدف تطوير حلول رقمية حديثة تخدم المجتمع والأسواق المحلية في مصر.</p></div>
             <div class="founder-contact">
@@ -1251,6 +1251,66 @@
                 </div>
             </div>
             <button class="back-to-chatbot" onclick="closeFounderProfile()"><i class="fas fa-arrow-right"></i> العودة إلى المساعد</button>
+        </div>
+    </div>
+
+    <!-- ========== الملف الشخصي الكامل للمؤس (يُفتح بالضغط على الاسم فقط) ========== -->
+    <div class="founder-bio-screen" id="founderBioScreen" role="dialog" aria-modal="true" aria-labelledby="founderBioName">
+        <div class="founder-bio-cover">
+            <button class="founder-bio-close" onclick="closeFounderFullProfile()" aria-label="إغلاق الملف الشخصي"><i class="fas fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="founder-bio-card">
+            <div class="founder-bio-head">
+                <img class="founder-bio-photo" src="https://i.ibb.co/Fb0bXv47/1b7c163c815821997ef4c0271269d86e-0.webp" alt="صورة المؤس" loading="lazy">
+                <h2 class="founder-bio-name" id="founderBioName">محمد سعد محمود الجيلاني</h2>
+                <div class="founder-bio-alias">المعروف باسم: <strong>محمد الجيلاني</strong></div>
+                <div class="founder-bio-role">مؤس ومدير تنفيذي — MISAR SYSTEMS</div>
+            </div>
+
+            <div class="founder-bio-section">
+                <h3 class="founder-bio-heading"><i class="fas fa-user-tie" aria-hidden="true"></i> نبذة</h3>
+                <p class="founder-bio-text">محمد الجيلاني هو مطور برمجيات ورائد أعمال مصري، ومؤس منصة "مسار سيستمز" (Masar Systems) للحلول الرقمية وتطبيقات الويب والموبايل، ويشغل منصب المدير التنفيذي لمنصة مسار سيستمز. يشغل منصب المنسق العام لمبادرة "طاقة شباب" بمحافظة قنا التابعة لوزارة الشباب والرياضة. الجيلاني حاصل على لقب "سفير الذكاء الاصطناعي" بالتعاون مع وزارة الاتصالات وتكنولوجيا المعلومات، ويمتلك خلفية متميزة مدعومة بدراسة حرة ومكثفة لإدارة الأعمال وتقنيات التحول الرقمي. كما يهتم بتطوير الحلول الرقمية، والذكاء الاصطناعي، وريادة الأعمال، وبناء وتطوير الأنظمة والمنصات التقنية.</p>
+            </div>
+
+            <div class="founder-bio-section">
+                <h3 class="founder-bio-heading"><i class="fas fa-location-dot" aria-hidden="true"></i> مسقط الرأس</h3>
+                <p class="founder-bio-text">محافظة قنا – مركز قفط – قرية العويضات – من عائلة آل أحمد.</p>
+            </div>
+
+            <div class="founder-bio-section">
+                <h3 class="founder-bio-heading"><i class="fas fa-briefcase" aria-hidden="true"></i> المناصب والأدوار</h3>
+                <ul class="founder-bio-list">
+                    <li>مؤس منصة MISAR SYSTEMS – مسار سيستمز</li>
+                    <li>المدير التنفيذي لمنصة MISAR SYSTEMS</li>
+                    <li>المنسق العام لكيان طاقة شباب بمحافظة قنا</li>
+                    <li>مطور برمجيات</li>
+                    <li>رائد أعمال</li>
+                </ul>
+            </div>
+
+            <div class="founder-bio-section">
+                <h3 class="founder-bio-heading"><i class="fas fa-star" aria-hidden="true"></i> مجالات الاهتمام</h3>
+                <div class="founder-bio-tags">
+                    <span class="founder-bio-tag">تطوير البرمجيات</span>
+                    <span class="founder-bio-tag">تطبيقات الويب والموبايل</span>
+                    <span class="founder-bio-tag">الحلول الرقمية</span>
+                    <span class="founder-bio-tag">التحول الرقمي</span>
+                    <span class="founder-bio-tag">الذكاء الاصطناعي</span>
+                    <span class="founder-bio-tag">التجارة الإلكترونية</span>
+                    <span class="founder-bio-tag">ريادة الأعمال</span>
+                    <span class="founder-bio-tag">إدارة الأعمال</span>
+                </div>
+            </div>
+
+            <div class="founder-bio-section">
+                <h3 class="founder-bio-heading"><i class="fas fa-address-card" aria-hidden="true"></i> تواصل</h3>
+                <div class="founder-bio-contact">
+                    <a href="mailto:mohamed.saad@misar.com"><i class="fas fa-envelope" aria-hidden="true"></i> mohamed.saad@misar.com</a>
+                    <a href="https://www.facebook.com/share/1DdQ5ezkjw/" target="_blank" rel="noopener"><i class="fab fa-facebook-f" aria-hidden="true"></i> @mohammedsaad</a>
+                </div>
+            </div>
+
+            <button class="back-to-chatbot founder-bio-back" onclick="closeFounderFullProfile()"><i class="fas fa-arrow-right" aria-hidden="true"></i> العودة لصفحة المؤس</button>
         </div>
     </div>
 
@@ -1298,7 +1358,6 @@
 <script src="js/admin-properties.js"></script>
 <script src="js/admin-services.js"></script>
 <script src="js/admin-orders.js"></script>
-<script src="js/admin-reports.js"></script>
 <script src="js/admin-logs.js"></script>
 <script src="js/admin-settings.js"></script>
 <script src="js/admin-banners.js"></script>
