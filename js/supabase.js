@@ -647,20 +647,35 @@ async function getHelpfulCount(reviewId) {
 // ============================================================
 
 async function signInWithGoogle() {
-    // تحديد نوع الحساب من الشاشة النشطة (تسجيل الدخول أو التسجيل)
-    const loginAccountType = document.getElementById('loginAccountType');
-    const registerAccountType = document.getElementById('registerAccountType');
+    // ============================================================
+    // 🛡️ حاسم: نحفظ "نوع الحساب المختار" فقط عند التسجيل الجديد،
+    // ولا نحفظه أطلاقاً عند تسجيل الدخول. السبب: حفظه في شاشة الدخول
+    // كان يجعل القائمة الافتراضية ("عميل") تُكتب على حساب المؤسس/
+    // المدير عند كل دخول فيتحول إلى عميل وتختفي لوحته.
+    // ============================================================
     const activeScreen = document.querySelector('.screen.active');
-    let accountTypeEl = loginAccountType;
-    if (activeScreen && activeScreen.id === 'registerScreen' && registerAccountType) {
-        accountTypeEl = registerAccountType;
+    const isRegisterFlow = !!(activeScreen && activeScreen.id === 'registerScreen');
+
+    if (isRegisterFlow) {
+        const registerAccountType = document.getElementById('registerAccountType');
+        if (!registerAccountType) { showToast('خطأ في النموذج', 'error'); return; }
+        const chosenType = registerAccountType.value;
+        // إجباري في التسجيل: لا بد من اختيار صريح
+        if (!chosenType || !['client', 'seller', 'delivery'].includes(chosenType)) {
+            showToast('يرجى اختيار نوع الحساب أولاً (عميل / بائع / مندوب)', 'warning');
+            registerAccountType.focus();
+            registerAccountType.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            registerAccountType.style.borderColor = '#c62828';
+            setTimeout(() => { registerAccountType.style.borderColor = ''; }, 2500);
+            return;
+        }
+        sessionStorage.setItem('pendingAccountType', chosenType);
+        localStorage.setItem('misarPendingAccountType', chosenType);
+    } else {
+        // دخول فقط ⇒ لا نكتب أي نوع حساب ولا نحفظه
+        sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
     }
-    if (!accountTypeEl) { showToast('خطأ في النموذج', 'error'); return; }
-    const chosenType = accountTypeEl.value;
-    // حفظ نوع الحساب في sessionStorage و localStorage (احتياط: قد يفقده sessionStorage
-    // في بعض متصفحات الهاتف أو عند إعادة فتح الصفحة بعد إعادة التوجيه)
-    sessionStorage.setItem('pendingAccountType', chosenType);
-    localStorage.setItem('misarPendingAccountType', chosenType);
     showLoading(true);
     try {
         // رابط عودة نظيف بدون استعلامات أو هاش (حتى لا يرفضه Supabase/Google)
@@ -703,8 +718,41 @@ async function applyPendingAccountType() {
         // لا يوجد مستخدم بعد (قد تكون أول زيارة بعد إعادة التوجيه) - ننتظر حتى اكتمال الجلسة
         return false;
     }
+
+    // ============================================================
+    // 🛡️ خط الدفاع الحاسم:
+    // هذه الدالة مخصّصة لحالة واحدة فقط — الحساب الجديد الذي اختار
+    // نوعه قبل التسجيل. إذا كان الحساب يملك نوعاً محفوظاً مسبقاً
+    // (وخاصة founder / general_manager / seller / delivery) فلا يجوز
+    // الكتابة عليه إطلاقاً، وإلا يتحول المؤسس إلى "عميل" عند كل دخول
+    // فتختفي لوحته. نكتفي بإزالة القيمة المعلّقة والخروج.
+    // ============================================================
+    const currentType = appState.userData && appState.userData.account_type;
+    const PROTECTED_TYPES = ['founder', 'general_manager', 'seller', 'delivery', 'admin'];
+    if (currentType) {
+        // الحساب له نوع بالفعل ⇒ لا نلمسه
+        if (PROTECTED_TYPES.includes(currentType) || currentType !== 'client') {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
+        // حتى لو النوع الحالي 'client'، نتجاهل القيمة المعلّقة إن كانت
+        // نفس النوع (لا تغيير) — الكتابة بلا داعٍ خطر بلا فائدة.
+        if (pendingType === currentType) {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
+    }
+
     try {
         const accountType = pendingType;
+        // لا نسمح أبداً بهذه الدالة أن تُنشئ أو تُرقّي إلى مؤسس/مدير عام
+        if (accountType === 'founder' || accountType === 'general_manager' || accountType === 'admin') {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
         const existing = appState.userData && Object.keys(appState.userData).length > 0
             ? appState.userData
             : null;
@@ -829,6 +877,20 @@ async function signUpWithEmail() {
     let governorate = governorateSelect ? governorateSelect.value : '';
     let center = centerSelect ? centerSelect.value : '';
 
+    // ===== نوع الحساب إجباري (أول تحقق — قبل أي حقل آخر) =====
+    // منع إنشاء حساب بلا اختيار صريح لنوعه (عميل / بائع / مندوب).
+    if (!accountType || !['client', 'seller', 'delivery'].includes(accountType)) {
+        showToast('يرجى اختيار نوع الحساب أولاً (عميل / بائع / مندوب)', 'warning');
+        if (accountTypeSelect) {
+            accountTypeSelect.focus();
+            accountTypeSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // إبراز الحقل بلون تحذيري مؤقت
+            accountTypeSelect.style.borderColor = '#c62828';
+            setTimeout(() => { accountTypeSelect.style.borderColor = ''; }, 2500);
+        }
+        return;
+    }
+
     // ===== التحقق من الحقول الإجبارية =====
     if (!governorate) { showToast('يرجى اختيار المحافظة', 'warning'); return; }
     if (!center) { showToast('يرجى اختيار المركز / المدينة', 'warning'); return; }
@@ -849,14 +911,6 @@ async function signUpWithEmail() {
 
     if (accountType === 'delivery') {
         deliveryCenter = center;
-    }
-
-    if (email === 'sa3dgelany@gmail.com') {
-        accountType = 'founder';
-        if (password !== '123456') {
-            showToast('كلمة المرور الخاصة بحساب المؤسس غير صحيحة (يجب أن تكون 123456)', 'error');
-            return;
-        }
     }
 
     const metadata = {
@@ -1002,6 +1056,7 @@ async function logout(showConfirm = true) {
         toggleSellerMenuItem(false);
         toggleDeliveryMenuItem(false);
         toggleFounderMenuItem(false);
+        toggleGeneralManagerMenuItem(false);
         resetMisarFounderModeOnLogout();
         updateUserInfo(true);
         await loadCart();
@@ -1035,6 +1090,10 @@ function toggleDeliveryMenuItem(isDelivery) {
 function toggleFounderMenuItem(isFounder) {
     const founderItem = document.getElementById('founderDashboardMenuItem');
     if (founderItem) founderItem.style.display = isFounder ? 'flex' : 'none';
+}
+function toggleGeneralManagerMenuItem(isGeneralManager) {
+    const gmItem = document.getElementById('generalManagerDashboardMenuItem');
+    if (gmItem) gmItem.style.display = isGeneralManager ? 'flex' : 'none';
 }
 
 // توافق خلفي: إعادة الاقتراحات لشكلها الافتراضي عند تسجيل الخروج
@@ -1073,44 +1132,48 @@ async function loadUserData() {
             const isPermissionIssue = error?.code === '42501' || /permission denied|does not exist|not exist|table .* not found/i.test(String(error?.message || ''));
             console.warn('تم استخدام بيانات محلية بدلاً من user_data بسبب:', error?.message || error);
             appState.userData = defaultData;
-            if (!isPermissionIssue) {
-                try {
-                    const { error: upsertError } = await supabaseClient.from('user_data').upsert(defaultData);
-                    if (!upsertError) {
-                        appState.userData = { ...defaultData, ...(await supabaseClient.from('user_data').select('*').eq('id', appState.user.id).maybeSingle()).data || {} };
-                    }
-                } catch (upsertCatch) {
-                    console.warn('تعذر إنشاء user_data محليًا:', upsertCatch);
-                }
+            // لا نكتب أي بيانات عند وجود خطأ قراءة. الكتابة هنا كانت
+            // تستبدل صف المستخدم بقيم افتراضية (account_type='client')
+            // وتُفقد الصلاحيات. الاعتماد الآن على القراءة فقط.
+            if (isPermissionIssue) {
+                console.warn('لا صلاحية لقراءة user_data؛ سيتم استخدام بيانات الجلسة فقط.');
             }
         } else if (data) {
             appState.userData = data;
         } else {
+            // مهم جداً: data === null هنا تعني أحد أمرين:
+            //   (أ) الصف غير موجود فعلاً  → يجوز إنشاؤه.
+            //   (ب) الصف موجود لكن RLS تمنع قراءته → يجب عدم الكتابة إطلاقاً.
+            //     لأن upsert(account_type='client') كان يستبدل صف المؤسس
+            //     ويحوّل صلاحياته إلى عميل عند كل تسجيل دخول.
+            // لذلك نتحقق أولاً هل الصف موجود (بدون كتابة)، وإن كان موجوداً
+            // نكتفي بالبيانات المحلية ولا نلمس قاعدة البيانات.
+            let rowExists = false;
             try {
-                await supabaseClient.from('user_data').upsert(defaultData);
-            } catch (insertErr) {
-                console.warn('تعذر إنشاء سجل user_data، سيتم العمل مع بيانات محلية:', insertErr);
+                const { count } = await supabaseClient
+                    .from('user_data')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('id', appState.user.id);
+                rowExists = (count || 0) > 0;
+            } catch (countErr) {
+                // لو فشل العدّ لأي سبب، نفترض وجود الصف للأمان (لا نكتب).
+                rowExists = true;
+            }
+
+            if (!rowExists) {
+                try {
+                    await supabaseClient.from('user_data').insert(defaultData);
+                } catch (insertErr) {
+                    console.warn('تعذر إنشاء سجل user_data، سيتم العمل مع بيانات محلية:', insertErr);
+                }
+            } else {
+                console.warn('صف المستخدم موجود لكنه غير مقروء (RLS) — لن تتم أي كتابة تجنّباً لإتلاف البيانات.');
             }
             appState.userData = defaultData;
         }
 
         if (!appState.userData || Object.keys(appState.userData).length === 0) {
             appState.userData = defaultData;
-        }
-
-        // ===== ضمان صلاحيات المؤسس للبريد الرسمي =====
-        // لو صف user_data اتمسح أو نوع الحساب اتغير بالغلط، بنصلحه تلقائياً
-        if ((appState.user.email || '').toLowerCase() === 'sa3dgelany@gmail.com' && appState.userData.account_type !== 'founder') {
-            appState.userData.account_type = 'founder';
-            const { error: fixErr } = await supabaseClient
-                .from('user_data')
-                .update({ account_type: 'founder' })
-                .eq('id', appState.user.id);
-            if (fixErr) {
-                // لو الصف مش موجود أصلاً، ننشئه كمؤسس
-                await supabaseClient.from('user_data').upsert({ ...defaultData, account_type: 'founder' });
-            }
-            console.log('👑 تم استعادة صلاحيات المؤسس تلقائياً');
         }
 
         if (appState.userData) {
@@ -1129,6 +1192,29 @@ async function loadUserData() {
         const isApprovedDelivery = appState.userData.account_type === 'delivery' && (appState.userData.status === 'approved' || !appState.userData.status);
         const isFounder = appState.userData.account_type === 'founder';
 
+        // تشخيص مرئي (يظهر في الـ Console دائماً، وعلى الشاشة لحساب المؤسس)
+        window.__founderDiag = {
+            account_type: appState.userData.account_type,
+            status: appState.userData.status,
+            source: (error ? 'defaultData(فشلت القراءة)' : (data ? 'user_data(من قاعدة البيانات)' : 'defaultData(الصف غير موجود)')),
+            errorCode: error ? (error.code || error.message) : null,
+            metaAccountType: appState.user.user_metadata?.account_type || null,
+            isFounder: isFounder,
+            rowFound: (typeof data !== 'undefined' && data) ? true : false
+        };
+        console.log('🔍 تشخيص حساب المؤسس:', window.__founderDiag);
+
+        // إذا كان البريد هو بريد المؤسس ولم يُقرأ النوع كـ founder، نُظهر تنبيهاً
+        // واضحاً بسبب المشكلة وكيفية حلها (بدل أن تختفي اللوحة صامتة).
+        try {
+            const em = (appState.user.email || '').toLowerCase();
+            if (em === 'sa3dgelany@gmail.com' && !isFounder) {
+                if (typeof showFounderDiagBanner === 'function') {
+                    showFounderDiagBanner(window.__founderDiag);
+                }
+            }
+        } catch (e) { /* تجاهل */ }
+
         toggleSellerMenuItem(isApprovedSeller);
         toggleDeliveryMenuItem(isApprovedDelivery);
         toggleFounderMenuItem(isFounder);
@@ -1146,6 +1232,24 @@ async function loadUserData() {
             await loadFounderStats();
             await loadPendingDeliveries();
         }
+
+        // ===== نظام المدير العام =====
+        // مهم: نحمّل الصلاحيات دائماً (يحتاجها المدير العام لعرض تبويباته).
+        if (typeof misarLoadGmSettings === 'function') {
+            await misarLoadGmSettings();
+        }
+        // قائمة المدراء يحتاجها المؤسس فقط (لعرض اللوحة) — نتجنب
+        // طلبها لكل مستخدم حفاظاً على الخصوصية وتقليل الطلبات.
+        if (isFounder) {
+            if (typeof misarLoadGmList === 'function') {
+                await misarLoadGmList();
+            }
+            if (typeof misarRenderGmList === 'function') {
+                try { misarRenderGmList(); } catch (e) { /* عنصر الجدول غير موجود بعد */ }
+            }
+        }
+        const isGeneralManager = typeof misarIsGeneralManager === 'function' && misarIsGeneralManager();
+        toggleGeneralManagerMenuItem(isGeneralManager);
 
         await updateCartBadgeFromDB();
         await loadUnreadNotificationsCount();
@@ -1835,6 +1939,15 @@ function showScreen(screenId) {
         loadPendingDeliveries();
         if (typeof displayAllDeliveryPersons === 'function') displayAllDeliveryPersons();
     }
+    if (screenId === 'generalManagerDashboardScreen') {
+        // الحماية الحقيقية في RLS؛ هذا حارس واجهة فقط
+        if (typeof misarIsGeneralManager !== 'function' || !misarIsGeneralManager()) {
+            showToast('هذه الصفحة مخصصة للمدير العام فقط', 'error');
+            showScreen('homeScreen');
+            return;
+        }
+        if (typeof misarInitGeneralManagerDashboard === 'function') misarInitGeneralManagerDashboard();
+    }
     if (screenId === 'ordersScreen') {
         if (typeof loadBuyerOrdersWithTimeline === 'function') loadBuyerOrdersWithTimeline();
     }
@@ -2476,6 +2589,47 @@ window.showBearReaction = showBearReaction;
 window.showLoading = showLoading;
 window.showToast = showToast;
 window.escapeHTML = escapeHTML;
+
+// ============================================================
+// بانر تشخيصي لحساب المؤسس
+// يظهر فقط لبريد المؤسس عندما لا يُقرأ نوع الحساب كـ 'founder'،
+// ويشرح السبب الفعلي (صف مفقود / نوع خاطئ / حجب RLS) مع الحل.
+// ============================================================
+window.showFounderDiagBanner = function (diag) {
+    try {
+        const old = document.getElementById('founderDiagBanner');
+        if (old) old.remove();
+
+        let reason, action;
+        if (diag.source.indexOf('فشلت القراءة') !== -1) {
+            reason = 'لا يمكن قراءة صفك في جدول user_data (RLS يمنع القراءة أو الجدول غير متاح).';
+            action = 'شغّل سكربت FIX_restore_founder_access.sql في Supabase SQL Editor.';
+        } else if (diag.source.indexOf('الصف غير موجود') !== -1) {
+            reason = 'صفك غير موجود أصلاً في جدول user_data.';
+            action = 'شغّل FIX_sa3d_founder_now.sql لإنشاء الصف بدور founder.';
+        } else {
+            reason = 'صفك موجود لكن account_type = "' + (diag.account_type || 'غير محدد') + '" وليس founder.';
+            action = 'شغّل: UPDATE public.user_data SET account_type = \'founder\', status = \'approved\' WHERE lower(email) = \'sa3dgelany@gmail.com\';';
+        }
+
+        const box = document.createElement('div');
+        box.id = 'founderDiagBanner';
+        box.dir = 'rtl';
+        box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b71c1c;color:#fff;padding:14px 18px;font-family:inherit;font-size:0.9rem;line-height:1.7;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+        box.innerHTML =
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;max-width:1100px;margin:0 auto;">' +
+              '<div>' +
+                '<strong style="font-size:1rem;">⚠️ لوحة المؤسس مخفية — السبب الحقيقي:</strong><br>' +
+                '<span>' + reason + '</span><br>' +
+                '<span style="background:rgba(255,255,255,0.15);padding:3px 8px;border-radius:6px;display:inline-block;margin-top:6px;direction:ltr;text-align:left;">' + action + '</span><br>' +
+                '<small style="opacity:0.85;">التفاصيل الكاملة في Console: <code>__founderDiag</code></small>' +
+              '</div>' +
+              '<button onclick="this.parentElement.parentElement.remove()" style="background:#fff;color:#b71c1c;border:none;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;">إغلاق</button>' +
+            '</div>';
+        document.body.appendChild(box);
+    } catch (e) { console.warn('فشل عرض بانر التشخيص:', e); }
+};
+
 window.signInWithGoogle = signInWithGoogle;
 window.applyPendingAccountType = applyPendingAccountType;
 window.signInWithEmail = signInWithEmail;

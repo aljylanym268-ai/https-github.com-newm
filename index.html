@@ -79,11 +79,7 @@
                     </div>
                 </div>
                 <h1 class="login-title">تسجيل الدخول</h1>
-                <select class="account-type-select" id="loginAccountType">
-                    <option value="client" selected>عميل</option>
-                    <option value="seller">بائع</option>
-                    <option value="delivery">مندوب</option>
-                </select>
+                <p class="register-subtitle">سجّل بحسابك — نوع حسابك محفوظ تلقائياً ولا يحتاج اختياراً.</p>
                 <button class="google-btn" id="googleLoginBtn"><i class="fab fa-google"></i> تسجيل الدخول عبر Google</button>
                 <div style="text-align:center; margin:15px 0; color:#aaa;">أو</div>
                 <div class="input-group">
@@ -126,14 +122,16 @@
                     </div>
                 </div>
                 <h1 class="register-title">إنشاء حساب جديد</h1>
-                <p class="register-subtitle">أدخل بياناتك للتسجيل</p>
-<select class="account-type-select" id="registerAccountType">
-                    <option value="client" selected>عميل</option>
-                    <option value="seller">بائع</option>
-                    <option value="delivery">مندوب</option>
-                </select>
-                <button class="google-btn" id="googleRegisterBtn"><i class="fab fa-google"></i> التسجيل عبر Google</button>
-                <div style="text-align:center; margin:15px 0; color:#aaa;">أو أنشئ حساباً بالبريد الإلكتروني</div>
+                <p class="register-subtitle">اختر نوع الحساب ثم أدخل بياناتك</p>
+                <div class="input-group">
+                    <label class="input-label">نوع الحساب * <span style="color:#c62828; font-size:0.8rem;">(اختيار إجباري)</span></label>
+                    <select class="account-type-select" id="registerAccountType" required>
+                        <option value="" selected disabled>— اختر نوع الحساب أولاً —</option>
+                        <option value="client">عميل</option>
+                        <option value="seller">بائع</option>
+                        <option value="delivery">مندوب</option>
+                    </select>
+                </div>
                 <div class="input-group">
                     <label class="input-label">المحافظة *</label>
                     <select class="location-select" id="registerGovernorate" required>
@@ -357,6 +355,7 @@
             <a href="#" class="menu-item" id="sellerDashboardMenuItem" style="display:none;" onclick="showScreen('sellerDashboardScreen')"><div class="menu-icon"><i class="fas fa-store"></i></div><div class="menu-text">لوحة البائع</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="deliveryDashboardMenuItem" style="display:none;" onclick="showScreen('deliveryDashboardScreen')"><div class="menu-icon"><i class="fas fa-truck"></i></div><div class="menu-text">لوحة المندوب</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="founderDashboardMenuItem" style="display:none;" onclick="showScreen('founderDashboardScreen')"><div class="menu-icon"><i class="fas fa-crown"></i></div><div class="menu-text">لوحة تحكم المؤسس</div><i class="fas fa-chevron-left menu-arrow"></i></a>
+            <a href="#" class="menu-item" id="generalManagerDashboardMenuItem" style="display:none;" onclick="showScreen('generalManagerDashboardScreen')"><div class="menu-icon"><i class="fas fa-user-tie"></i></div><div class="menu-text">لوحة المدير العام</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" onclick="openLocationSettings()"><div class="menu-icon"><i class="fas fa-map-marker-alt"></i></div><div class="menu-text">تغيير المنطقة</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" onclick="showScreen('editProfileScreen')"><div class="menu-icon"><i class="fas fa-user-edit"></i></div><div class="menu-text">تعديل الملف الشخصي</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <div style="padding: 0 5%; margin-top: 10px;">
@@ -508,7 +507,15 @@
                 <div class="input-group"><label class="input-label">الكمية المتاحة</label><input type="number" id="productStock" class="input-field" placeholder="0" value="1"></div>
                 <div class="input-group"><label class="input-label">الوصف</label><textarea id="productDescription" class="input-field" placeholder="وصف المنتج" rows="3"></textarea></div>
                 <div class="input-group"><label class="input-label">التصنيف</label><select id="productCategory" class="input-field"><option value="">اختر التصنيف</option><option value="electronics">إلكترونيات</option><option value="fashion">أزياء</option><option value="home">منزل</option><option value="food">أطعمة</option><option value="beauty">جمال وعناية</option><option value="sports">رياضة</option></select></div>
-                <div class="input-group"><label class="input-label">صور المنتج (يمكنك اختيار عدة صور)</label><input type="file" id="productImages" accept="image/*" multiple onchange="previewMultipleImages(event)"><div class="image-preview-list" id="multiImagePreview"></div></div>
+                <div class="input-group">
+                    <label class="input-label">صور المنتج (يمكنك اختيار عدة صور)</label>
+                    <!-- input مخفي: نُشغّله بالزر الواضح أدناه للحفاظ على نفس دالة المعاينة -->
+                    <input type="file" id="productImages" accept="image/*" multiple onchange="previewMultipleImages(event)" style="display:none;">
+                    <button type="button" class="add-product-photo-btn" onclick="document.getElementById('productImages').click()">
+                        <i class="fas fa-plus-circle"></i> زر إضافة منتج (صور)
+                    </button>
+                    <div class="image-preview-list" id="multiImagePreview"></div>
+                </div>
                 <div class="input-group"><label class="input-label">نسبة الخصم (%)</label><input type="number" id="productDiscount" class="input-field" placeholder="0" min="0" max="100"></div>
                 <input type="hidden" id="editingProductId" value="">
                 <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="saveProduct()">حفظ</button><button class="google-btn" style="flex:1;" onclick="closeProductModal()">إلغاء</button></div>
@@ -627,6 +634,7 @@
             <button class="founder-tab" data-tab="notifications" onclick="switchFounderTab('notifications')"><i class="fas fa-bell"></i> الإشعارات</button>
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
             <button class="founder-tab" data-tab="locations" onclick="switchFounderTab('locations')"><i class="fas fa-map-marked-alt"></i> إدارة المواقع</button>
+            <button class="founder-tab" data-tab="general-manager" onclick="switchFounderTab('general-manager')"><i class="fas fa-user-tie"></i> المدير العام</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
             <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
             <button class="founder-tab" data-tab="online" onclick="switchFounderTab('online')"><i class="fas fa-signal"></i> المتصلون الآن</button>
@@ -776,6 +784,11 @@
                     <button class="filter-btn" onclick="filterOrdersAdminByStatus('in_delivery')">قيد التوصيل</button>
                     <button class="filter-btn" onclick="filterOrdersAdminByStatus('delivered')">مكتمل</button>
                     <button class="filter-btn" onclick="filterOrdersAdminByStatus('cancelled')">ملغي</button>
+                </div>
+                <div id="ordersUserFilterBar" class="orders-user-filter" style="display:none;">
+                    <i class="fas fa-filter"></i>
+                    <span id="ordersUserFilterText"></span>
+                    <button class="filter-btn" onclick="clearOrdersUserFilter()"><i class="fas fa-times"></i> إظهار كل الطلبات</button>
                 </div>
                 <div id="ordersTableWrapper">
                     <table class="founder-table" id="ordersTable">
@@ -937,8 +950,219 @@
                 </div>
             </div>
 
+            <!-- تبويب إدارة المدير العام (General Manager) -->
+            <div id="tab-general-manager" class="founder-tab-panel">
+                <div class="founder-card">
+                    <h3><i class="fas fa-user-tie"></i> إدارة المدير العام</h3>
+                    <p style="color:#666; font-size:0.9rem;">المدير العام تحت سلطتك المباشرة. يمكنك تعيينه، إيقافه، سحب صلاحياته، متابعة نشاطه، وإلغاء تعيينه في أي وقت.</p>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#f0f2f5; padding:10px; border-radius:12px;">
+                        <input type="email" id="gmPromoteEmail" class="input-field" style="flex:1; min-width:200px;" placeholder="بريد المستخدم لتعيينه كمدير عام">
+                        <button class="founder-btn" style="width:auto; padding:8px 14px;" onclick="onGmPromoteByEmail()"><i class="fas fa-user-plus"></i> تعيين مدير عام</button>
+                    </div>
+                </div>
+
+                <div style="margin-top:18px;">
+                    <h4><i class="fas fa-users"></i> المدراء العامون</h4>
+                    <p style="color:#666; font-size:0.85rem;">اضغط «الصلاحيات» بجانب أي مدير لتخصيص صلاحياته، أو «تسمية» لتسميته (مشرف / إداري / مدير...).</p>
+                    <div style="overflow-x:auto;">
+                    <table class="founder-table" id="gmListTable">
+                        <thead><tr><th>الاسم</th><th>التسمية / الدور</th><th>البريد</th><th>الحالة</th><th>تاريخ التعيين</th><th>الإيقاف</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gmListTableBody"><tr><td colspan="7" style="text-align:center;">جاري التحميل...</td></tr></tbody>
+                    </table>
+                    </div>
+                </div>
+
+                <div style="margin-top:22px;">
+                    <h4><i class="fas fa-key"></i> صلاحيات المدير</h4>
+                    <p style="color:#666; font-size:0.85rem;">اختر مديراً من الجدول أعلاه لتخصيص صلاحياته، أو اترك بلا تحديد لتعديل الصلاحيات <b>الافتراضية</b> لكل المدراء.</p>
+                    <div class="gm-perm-toolbar">
+                        <button class="filter-btn" onclick="onGmApplyTemplate('view')"><i class="fas fa-eye"></i> قالب: عرض فقط</button>
+                        <button class="filter-btn" onclick="onGmApplyTemplate('full')"><i class="fas fa-unlock"></i> قالب: صلاحيات كاملة</button>
+                        <button class="filter-btn" onclick="onGmApplyTemplate('default')"><i class="fas fa-undo"></i> قالب: الافتراضي</button>
+                    </div>
+                    <div id="gmPermissionsGrid" class="gm-perm-grid"></div>
+                </div>
+            </div>
+
         </div> <!-- end founder-tab-content -->
     </div> <!-- end founderDashboardScreen -->
+
+    <!-- ============================================================ -->
+    <!-- لوحة المدير العام (General Manager) -->
+    <!-- ============================================================ -->
+    <div class="screen hidden" id="generalManagerDashboardScreen">
+        <div class="app-header">
+            <button class="back-btn" onclick="showScreen('homeScreen')"><i class="fas fa-arrow-right"></i></button>
+            <h1>لوحة المدير العام</h1>
+            <div class="header-actions">
+                <button class="header-icon" onclick="misarSwitchGmTab(document.querySelector('#gmTabs .founder-tab.active')?.dataset.tab || 'dashboard')" title="تحديث"><i class="fas fa-sync-alt"></i></button>
+            </div>
+        </div>
+
+        <div class="founder-tabs" id="gmTabs"></div>
+
+        <div class="founder-tab-content">
+            <!-- نظرة عامة -->
+            <div id="gm-tab-dashboard" class="gm-tab-panel founder-tab-panel active">
+                <div class="founder-stats-grid" id="gmStatsGrid"></div>
+                <div style="margin-top:20px; text-align:center;">
+                    <button class="refresh-stats-btn" onclick="misarSwitchGmTab('dashboard')"><i class="fas fa-sync-alt"></i> تحديث الإحصائيات</button>
+                </div>
+            </div>
+
+            <!-- الطلبات -->
+            <div id="gm-tab-orders" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-orderSearchInput" placeholder="ابحث برقم الطلب، العميل، الحالة..." oninput="misarGmFilterOrders()"></div>
+                </div>
+                <div id="gm-ordersTableWrapper">
+                    <table class="founder-table" id="gm-ordersTable">
+                        <thead><tr><th>رقم الطلب</th><th>العميل</th><th>المنتج</th><th>المبلغ</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-ordersTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="gm-ordersPagination"></div>
+            </div>
+
+            <!-- المنتجات -->
+            <div id="gm-tab-products" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-productSearchInput" placeholder="ابحث باسم المنتج، البائع، القسم..." oninput="misarGmFilterProducts()"></div>
+                    <button class="filter-btn" onclick="misarGmFilterProductsByStatus('all')">الكل</button>
+                    <button class="filter-btn" onclick="misarGmFilterProductsByStatus('published')">منشور</button>
+                    <button class="filter-btn" onclick="misarGmFilterProductsByStatus('hidden')">مخفي</button>
+                </div>
+                <div id="gm-productsTableWrapper">
+                    <table class="founder-table" id="gm-productsTable">
+                        <thead><tr><th>المنتج</th><th>البائع</th><th>السعر</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-productsTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="gm-productsPagination"></div>
+            </div>
+
+            <!-- الخدمات -->
+            <div id="gm-tab-services" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-serviceSearchInput" placeholder="ابحث باسم الخدمة..." oninput="misarGmFilterServices()"></div>
+                </div>
+                <div id="gm-servicesTableWrapper">
+                    <table class="founder-table" id="gm-servicesTable">
+                        <thead><tr><th>الخدمة</th><th>السعر</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-servicesTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- المستخدمون -->
+            <div id="gm-tab-users" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-customerSearchInput" placeholder="ابحث بالاسم، الهاتف، البريد..." oninput="misarGmFilterCustomers()"></div>
+                </div>
+                <div id="gm-customersTableWrapper">
+                    <table class="founder-table" id="gm-customersTable">
+                        <thead><tr><th>الاسم</th><th>البريد</th><th>الهاتف</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-customersTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="gm-customersPagination"></div>
+            </div>
+
+            <!-- البائعون -->
+            <div id="gm-tab-sellers" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-sellerSearchInput" placeholder="ابحث باسم المتجر أو البائع..." oninput="misarGmFilterSellers()"></div>
+                </div>
+                <div id="gm-sellersTableWrapper">
+                    <table class="founder-table" id="gm-sellersTable">
+                        <thead><tr><th>البائع</th><th>البريد</th><th>المنتجات</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-sellersTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="gm-sellersPagination"></div>
+            </div>
+
+            <!-- المندوبون -->
+            <div id="gm-tab-delivery" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gm-deliverySearchInput" placeholder="ابحث بالاسم، الهاتف، الحالة..." oninput="misarGmFilterDeliveries()"></div>
+                </div>
+                <div id="gm-deliveriesTableWrapper">
+                    <table class="founder-table" id="gm-deliveriesTable">
+                        <thead><tr><th>المندوب</th><th>الهاتف</th><th>المركز</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-deliveriesTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="gm-deliveriesPagination"></div>
+            </div>
+
+            <!-- المرتجعات -->
+            <div id="gm-tab-returns" class="gm-tab-panel founder-tab-panel">
+                <div id="gm-founderReturnsList"></div>
+            </div>
+
+            <!-- الإعلانات / البنرات -->
+            <div id="gm-tab-ads" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-card"><h3>إدارة الإعلانات</h3><div id="gmBannersView"></div></div>
+                <div style="margin-top:18px;">
+                    <table class="founder-table" id="gm-bannersTable">
+                        <thead><tr><th>الصورة</th><th>العنوان</th><th>الرابط</th><th>الترتيب</th><th>نشط</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-bannersTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="gm-tab-banners" class="gm-tab-panel founder-tab-panel">
+                <div style="margin-top:18px;">
+                    <table class="founder-table">
+                        <thead><tr><th>الصورة</th><th>العنوان</th><th>الرابط</th><th>الترتيب</th><th>نشط</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="gm-bannersTableBody2"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- المواقع -->
+            <div id="gm-tab-locations" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-card">
+                    <h3><i class="fas fa-map-marked-alt"></i> إدارة المحافظات والمراكز</h3>
+                    <div id="gmLocationsContent"></div>
+                </div>
+            </div>
+
+            <!-- التقارير -->
+            <div id="gm-tab-reports" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-stats-grid" id="gmReportsGrid"></div>
+            </div>
+
+            <!-- سجل النشاط -->
+            <div id="gm-tab-activity_logs" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-card">
+                    <h3><i class="fas fa-history"></i> سجل نشاطي</h3>
+                    <table class="founder-table">
+                        <thead><tr><th>العملية</th><th>التفاصيل</th><th>الوقت</th></tr></thead>
+                        <tbody id="gmActivityTableBody"><tr><td colspan="3" style="text-align:center;">جاري التحميل...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- الإعدادات -->
+            <div id="gm-tab-settings" class="gm-tab-panel founder-tab-panel">
+                <div class="founder-card">
+                    <h3>إعدادات التطبيق</h3>
+                    <div id="gmSettingsForm"></div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- end generalManagerDashboardScreen -->
+
+    <!-- ====== مودال نشاط المدير العام (للمؤسس) ====== -->
+    <div class="modal" id="gmActivityModal" onclick="if(event.target===this) closeGmActivityModal()">
+        <div class="modal-content" style="max-width:800px; width:92%;">
+            <h3 style="color:#1a237e; margin-bottom:15px;"><i class="fas fa-history"></i> سجل نشاط المدير العام</h3>
+            <div id="gmActivityModalBody" style="max-height:60vh; overflow:auto;"></div>
+            <div style="margin-top:16px;"><button class="google-btn" onclick="closeGmActivityModal()">إغلاق</button></div>
+        </div>
+    </div>
 
 <!-- ========== شاشات الأقسام الرئيسية ========== -->
     <div class="screen hidden" id="categoryProductsScreen">
@@ -1354,6 +1578,7 @@
 <script src="js/admin-dashboard.js"></script>
 <script src="js/admin-banners.js"></script>
 <script src="js/admin-locations.js"></script>
+<script src="js/general-manager.js"></script>
 <script src="js/banners.js"></script>
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>
@@ -1583,18 +1808,6 @@ if (session) {
             e.preventDefault();
             if (typeof signInWithGoogle === 'function') signInWithGoogle();
             else showToast('حدث خطأ في النظام', 'error');
-        });
-
-        // زر Google (التسجيل) - يستخدم نوع الحساب المختار في شاشة التسجيل
-        document.getElementById('googleRegisterBtn')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (typeof signUpWithGoogle === 'function') {
-                signUpWithGoogle();
-            } else if (typeof signInWithGoogle === 'function') {
-                signInWithGoogle();
-            } else {
-                showToast('حدث خطأ في النظام', 'error');
-            }
         });
 
         // روابط التبديل

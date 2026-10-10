@@ -1,0 +1,6 @@
+project_id = "wwojtkxwmgkrudtevbcb"
+
+[functions.misar-whatsapp]
+# Meta لا ترسل Authorization header عند التحقق من الـ Webhook (GET)
+# ولا عند إرسال إشعارات الرسائل (POST) => يجب تعطيل تحقق JWT على البوابة.
+verify_jwt = false

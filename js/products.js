@@ -454,8 +454,8 @@ function closeOrderModal() { document.getElementById('orderModal').classList.rem
 function closeProductModal() { document.getElementById('productModal').classList.remove('active'); }
 function showNotifications() { const newOrders = appState.seller.orders.filter(o => o.status === 'pending'); if (newOrders.length === 0) { showToast('لا توجد إشعارات جديدة', 'info'); return; } let msg = 'طلبات جديدة:\n'; newOrders.forEach(o => msg += `- طلب #${o.id.slice(0,8)} بمبلغ ${o.total_price} ج.م\n`); alert(msg); document.getElementById('sellerNotificationBadge').style.display = 'none'; }
 function exportOrdersCSV() { const orders = getVisibleSellerOrders(appState.seller.orders); let csv = 'رقم الطلب,العميل,الهاتف,العنوان,التاريخ,الحالة,الإجمالي\n'; orders.forEach(o => { const items = Number(o.total_price || 0) - Number(o.delivery_fee || 0); csv += `${o.id},${o.customer_name || ''},${o.customer_phone || ''},${o.shipping_address || ''},${new Date(o.created_at).toLocaleDateString()},${o.status},${items.toFixed(0)}\n`; }); const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'orders.csv'; link.click(); }
-async function confirmOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('buyer_id').eq('id', orderId).maybeSingle(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود أو لا يمكن للبائع الوصول إليه'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب؛ أصلح buyer_id في قاعدة البيانات'); const updatedOrder = await updateOrderStatus(orderId, 'confirmed'); if (!updatedOrder) { const { data: currentOrder, error: verifyError } = await supabaseClient.from('orders').select('status').eq('id', orderId).maybeSingle(); if (verifyError) throw verifyError; if (!currentOrder || currentOrder.status !== 'confirmed') throw new Error('تعذر تحديث حالة الطلب؛ تحقق من صلاحيات قاعدة البيانات'); } await sendNotification(order.buyer_id, 'تم تأكيد طلبك', `تم تأكيد طلبك #${orderId.slice(0,8)}`); showToast('تم تأكيد الطلب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
-async function prepareOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('*, buyer_id, center').eq('id', orderId).single(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب'); const updatedOrder = await updateOrderStatus(orderId, 'prepared'); if (!updatedOrder) throw new Error('تعذر تحديث حالة الطلب'); await sendNotification(order.buyer_id, 'تم تجهيز طلبك', `طلبك #${orderId.slice(0,8)} جاهز وسيتم توصيله قريباً`); if (order.center) await notifyDeliveryPersonsInCenter(order.center, orderId, 'شحنة جاهزة في منطقتك', `طلب #${orderId.slice(0,8)} جاهز للتوصيل في ${order.center}`); showToast('تم تحديث الحالة إلى "تم التجهيز" وإشعار المناديب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
+async function confirmOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('buyer_id').eq('id', orderId).maybeSingle(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود أو لا يمكن للبائع الوصول إليه'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب؛ أصلح buyer_id في قاعدة البيانات'); const updatedOrder = await updateOrderStatus(orderId, 'confirmed'); if (!updatedOrder) { const { data: currentOrder, error: verifyError } = await supabaseClient.from('orders').select('status').eq('id', orderId).maybeSingle(); if (verifyError) throw verifyError; if (!currentOrder || currentOrder.status !== 'confirmed') throw new Error('تعذر تحديث حالة الطلب؛ تحقق من صلاحيات قاعدة البيانات'); } await sendNotification(order.buyer_id, 'تم تأكيد طلبك', `تم تأكيد طلبك #${orderId.slice(0,8)}`); if (typeof notifySellerWhatsApp === 'function') notifySellerWhatsApp(orderId, 'order_accepted'); showToast('تم تأكيد الطلب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
+async function prepareOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('*, buyer_id, center').eq('id', orderId).single(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب'); const updatedOrder = await updateOrderStatus(orderId, 'prepared'); if (!updatedOrder) throw new Error('تعذر تحديث حالة الطلب'); await sendNotification(order.buyer_id, 'تم تجهيز طلبك', `طلبك #${orderId.slice(0,8)} جاهز وسيتم توصيله قريباً`); if (order.center) await notifyDeliveryPersonsInCenter(order.center, orderId, 'شحنة جاهزة في منطقتك', `طلب #${orderId.slice(0,8)} جاهز للتوصيل في ${order.center}`); if (typeof notifySellerWhatsApp === 'function') notifySellerWhatsApp(orderId, 'order_prepared'); showToast('تم تحديث الحالة إلى "تم التجهيز" وإشعار المناديب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 
 // ========== خدمات ==========
 function loadServices() {
@@ -593,8 +593,8 @@ function filterProductsAdminData(products) {
     });
 }
 
-function renderProductsTableAdmin(data) {
-    const tbody = document.getElementById('productsTableBody');
+function renderProductsTableAdmin(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('productsTableBody') : document.getElementById('productsTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">لا توجد منتجات</td></tr>';
@@ -770,16 +770,17 @@ window.reviewProductAdmin = async function(productId) {
 };
 
 window.filterProductsAdmin = function() {
-    const input = document.getElementById('productSearchInput');
+    const input = document.getElementById('productSearchInput') || document.getElementById('gm-productSearchInput');
     productsAdminFilter.query = input ? input.value.trim() : '';
     loadProductsTableAdmin();
 };
 
 window.filterProductsAdminByStatus = function(status) {
     productsAdminFilter.status = status;
-    document.querySelectorAll('#tab-products .filter-btn').forEach(btn => btn.classList.remove('active'));
+    const scope = document.getElementById('gm-tab-products') ? '#gm-tab-products' : '#tab-products';
+    document.querySelectorAll(scope + ' .filter-btn').forEach(btn => btn.classList.remove('active'));
     // تحديد الزر النشط
-    const btns = document.querySelectorAll('#tab-products .filter-btn');
+    const btns = document.querySelectorAll(scope + ' .filter-btn');
     const index = ['all','published','hidden','review'].indexOf(status);
     if (btns[index]) btns[index].classList.add('active');
     loadProductsTableAdmin();
@@ -1028,8 +1029,8 @@ async function loadServicesTableAdmin(page = 1, pageSize = 10) {
     renderPagination('servicesPagination', total, page, pageSize, (p) => loadServicesTableAdmin(p, pageSize));
 }
 
-function renderServicesTableAdmin(data) {
-    const tbody = document.getElementById('servicesTableBody');
+function renderServicesTableAdmin(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('servicesTableBody') : document.getElementById('servicesTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">لا توجد خدمات</td></tr>';
@@ -1057,7 +1058,7 @@ function renderServicesTableAdmin(data) {
 }
 
 window.filterServicesAdmin = function() {
-    const input = document.getElementById('serviceSearchInput');
+    const input = document.getElementById('serviceSearchInput') || document.getElementById('gm-serviceSearchInput');
     servicesAdminFilter.query = input ? input.value.trim() : '';
     loadServicesTableAdmin();
 };
@@ -1165,7 +1166,8 @@ window.deleteServiceConfirm = async function(serviceId) {
 };
 
 // ====== دوال الطلبات (المؤسس) ======
-let ordersAdminFilter = { query: '', status: 'all' };
+// buyerId / sellerId / deliveryId: فلترة على صاحب الرقم عند الضغط على العدّاد
+let ordersAdminFilter = { query: '', status: 'all', buyerId: null, sellerId: null, deliveryId: null };
 async function loadOrdersTableAdmin(page = 1, pageSize = 10) {
     const orders = await getAllOrdersAdmin();
     const filtered = orders.filter(o => {
@@ -1175,7 +1177,10 @@ async function loadOrdersTableAdmin(page = 1, pageSize = 10) {
                            (o.seller?.name && o.seller.name.toLowerCase().includes(q)) ||
                            (o.delivery?.name && o.delivery.name.toLowerCase().includes(q));
         const matchStatus = ordersAdminFilter.status === 'all' || o.status === ordersAdminFilter.status;
-        return matchQuery && matchStatus;
+        const matchBuyer = !ordersAdminFilter.buyerId || o.buyer_id === ordersAdminFilter.buyerId;
+        const matchSeller = !ordersAdminFilter.sellerId || o.seller_id === ordersAdminFilter.sellerId;
+        const matchDelivery = !ordersAdminFilter.deliveryId || o.delivery_id === ordersAdminFilter.deliveryId;
+        return matchQuery && matchStatus && matchBuyer && matchSeller && matchDelivery;
     });
     const total = filtered.length;
     const start = (page - 1) * pageSize;
@@ -1185,8 +1190,8 @@ async function loadOrdersTableAdmin(page = 1, pageSize = 10) {
     renderPagination('ordersPagination', total, page, pageSize, (p) => loadOrdersTableAdmin(p, pageSize));
 }
 
-function renderOrdersTableAdmin(data) {
-    const tbody = document.getElementById('ordersTableBody');
+function renderOrdersTableAdmin(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('ordersTableBody') : document.getElementById('ordersTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">لا توجد طلبات</td></tr>';
@@ -1221,15 +1226,17 @@ function renderOrdersTableAdmin(data) {
 }
 
 window.filterOrdersAdmin = function() {
-    const input = document.getElementById('orderSearchInput');
+    const input = document.getElementById('orderSearchInput') || document.getElementById('gm-orderSearchInput');
     ordersAdminFilter.query = input ? input.value.trim() : '';
     loadOrdersTableAdmin();
 };
 
 window.filterOrdersAdminByStatus = function(status) {
     ordersAdminFilter.status = status;
-    document.querySelectorAll('#tab-orders .filter-btn').forEach(b => b.classList.remove('active'));
-    const btns = document.querySelectorAll('#tab-orders .filter-btn');
+    // داخل لوحة المدير العام نستخدم #gm-tab-orders (لم تكن موجودة سابقًا)
+    const scope = document.getElementById('gm-tab-orders') ? '#gm-tab-orders' : '#tab-orders';
+    document.querySelectorAll(scope + ' .filter-btn').forEach(b => b.classList.remove('active'));
+    const btns = document.querySelectorAll(scope + ' .filter-btn');
     const index = ['all','pending','confirmed','prepared','in_delivery','delivered','cancelled'].indexOf(status);
     if (btns[index]) btns[index].classList.add('active');
     loadOrdersTableAdmin();
@@ -1531,8 +1538,8 @@ async function loadDeliveriesTable(page = 1, pageSize = 10) {
     renderPagination('deliveriesPagination', total, page, pageSize, (p) => loadDeliveriesTable(p, pageSize));
 }
 
-function renderDeliveriesTable(data) {
-    const tbody = document.getElementById('deliveriesTableBody');
+function renderDeliveriesTable(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('deliveriesTableBody') : document.getElementById('deliveriesTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">لا يوجد مناديب</td></tr>';
@@ -1578,15 +1585,16 @@ function renderDeliveriesTable(data) {
 }
 
 window.filterDeliveries = function() {
-    const input = document.getElementById('deliverySearchInput');
+    const input = document.getElementById('deliverySearchInput') || document.getElementById('gm-deliverySearchInput');
     deliveriesFilter.query = input ? input.value.trim() : '';
     loadDeliveriesTable();
 };
 
 window.filterDeliveriesByStatus = function(status) {
     deliveriesFilter.status = status;
-    document.querySelectorAll('#tab-deliveries .filter-btn').forEach(b => b.classList.remove('active'));
-    const btns = document.querySelectorAll('#tab-deliveries .filter-btn');
+    const scope = document.getElementById('gm-tab-delivery') ? '#gm-tab-delivery' : '#tab-deliveries';
+    document.querySelectorAll(scope + ' .filter-btn').forEach(b => b.classList.remove('active'));
+    const btns = document.querySelectorAll(scope + ' .filter-btn');
     const index = ['all','pending','approved','suspended','rejected'].indexOf(status);
     if (btns[index]) btns[index].classList.add('active');
     loadDeliveriesTable();
@@ -1610,8 +1618,8 @@ async function loadCustomersTable(page = 1, pageSize = 10) {
     renderPagination('customersPagination', total, page, pageSize, (p) => loadCustomersTable(p, pageSize));
 }
 
-function renderCustomersTable(data) {
-    const tbody = document.getElementById('customersTableBody');
+function renderCustomersTable(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('customersTableBody') : document.getElementById('customersTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">لا يوجد عملاء</td></tr>';
@@ -1630,7 +1638,9 @@ function renderCustomersTable(data) {
                 <td>${escapeHTML(c.name || 'غير معروف')}</td>
                 <td>${escapeHTML(c.phone || '')}</td>
                 <td>${escapeHTML(c.email || '')}</td>
-                <td>${c.order_count}</td>
+                <td>${c.order_count > 0
+                    ? `<button class="pending-badge" style="cursor:pointer;border:none;" title="عرض طلبات هذا العميل" onclick="openOrdersForUser('buyer','${c.id}', '${escapeHTML(c.name || '')}')">${c.order_count}</button>`
+                    : `<span class="pending-badge">0</span>`}</td>
                 <td>${new Date(c.created_at).toLocaleDateString('ar-EG')}</td>
                 <td>
                     <div class="action-group">
@@ -1646,7 +1656,7 @@ function renderCustomersTable(data) {
 }
 
 window.filterCustomers = function() {
-    const input = document.getElementById('customerSearchInput');
+    const input = document.getElementById('customerSearchInput') || document.getElementById('gm-customerSearchInput');
     customersFilter.query = input ? input.value.trim() : '';
     loadCustomersTable();
 };
@@ -1671,8 +1681,8 @@ async function loadSellersTable(page = 1, pageSize = 10) {
     renderPagination('sellersPagination', total, page, pageSize, (p) => loadSellersTable(p, pageSize));
 }
 
-function renderSellersTable(data) {
-    const tbody = document.getElementById('sellersTableBody');
+function renderSellersTable(data, targetEl) {
+    const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('sellersTableBody') : document.getElementById('sellersTableBody'));
     if (!tbody) return;
     if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">لا يوجد بائعين</td></tr>';
@@ -1688,7 +1698,9 @@ function renderSellersTable(data) {
             <td>${escapeHTML(s.name || 'غير معروف')}</td>
             <td>${escapeHTML(s.phone || '')}</td>
             <td>${s.product_count || 0}</td>
-            <td>${s.order_count || 0}</td>
+            <td>${(s.order_count || 0) > 0
+                    ? `<button class="pending-badge" style="cursor:pointer;border:none;" title="عرض طلبات هذا البائع" onclick="openOrdersForUser('seller','${s.id}', '${escapeHTML(s.name || '')}')">${s.order_count}</button>`
+                    : `<span class="pending-badge">0</span>`}</td>
             <td>${s.avg_rating ? s.avg_rating.toFixed(1) : '0'}</td>
             <td>${new Date(s.created_at).toLocaleDateString('ar-EG')}</td>
             <td>
@@ -1706,18 +1718,68 @@ function renderSellersTable(data) {
 }
 
 window.filterSellers = function() {
-    const input = document.getElementById('sellerSearchInput');
+    const input = document.getElementById('sellerSearchInput') || document.getElementById('gm-sellerSearchInput');
     sellersFilter.query = input ? input.value.trim() : '';
     loadSellersTable();
 };
 
 window.filterSellersByStatus = function(status) {
     sellersFilter.status = status;
-    document.querySelectorAll('#tab-sellers .filter-btn').forEach(b => b.classList.remove('active'));
-    const btns = document.querySelectorAll('#tab-sellers .filter-btn');
+    const scope = document.getElementById('gm-tab-sellers') ? '#gm-tab-sellers' : '#tab-sellers';
+    document.querySelectorAll(scope + ' .filter-btn').forEach(b => b.classList.remove('active'));
+    const btns = document.querySelectorAll(scope + ' .filter-btn');
     const index = ['all','approved','suspended'].indexOf(status);
     if (btns[index]) btns[index].classList.add('active');
     loadSellersTable();
+};
+
+// ============================================================
+// الضغط على عدد الطلبات في جدول → فتح الطلبات مُفلترة على صاحبها
+// ------------------------------------------------------------
+// role: 'buyer' | 'seller' | 'delivery'
+// يسجّل الفلتر ثم ينقل إلى تبويب الطلبات (يعمل في لوحتي المؤسس والمدير).
+// ============================================================
+window.openOrdersForUser = function (role, userId, displayName) {
+    if (!userId) return;
+
+    // إعادة تصفير الفلاتر والضبط على المستخدم المطلوب
+    ordersAdminFilter.query = '';
+    ordersAdminFilter.status = 'all';
+    ordersAdminFilter.buyerId = (role === 'buyer') ? userId : null;
+    ordersAdminFilter.sellerId = (role === 'seller') ? userId : null;
+    ordersAdminFilter.deliveryId = (role === 'delivery') ? userId : null;
+
+    const name = displayName ? ' - ' + displayName : '';
+    const roleLabel = role === 'buyer' ? 'العميل' : (role === 'seller' ? 'البائع' : 'المندوب');
+    if (typeof showToast === 'function') {
+        showToast('عرض طلبات ' + roleLabel + name, 'info');
+    }
+
+    // إظهار شارة الفلتر النشط
+    const bar = document.getElementById('ordersUserFilterBar');
+    const txt = document.getElementById('ordersUserFilterText');
+    if (bar && txt) {
+        txt.textContent = 'طلبات ' + roleLabel + name;
+        bar.style.display = 'flex';
+    }
+
+    // الانتقال للتبويب المناسب حسب اللوحة النشطة
+    const inGm = (typeof misarIsGmContext === 'function' && misarIsGmContext());
+    if (inGm) {
+        if (typeof window.misarSwitchGmTab === 'function') window.misarSwitchGmTab('orders');
+    } else {
+        if (typeof window.switchFounderTab === 'function') window.switchFounderTab('orders');
+    }
+};
+
+// إظهار شارة صغيرة توضّح وجود فلتر نشط على الطلبات
+window.clearOrdersUserFilter = function () {
+    ordersAdminFilter.buyerId = null;
+    ordersAdminFilter.sellerId = null;
+    ordersAdminFilter.deliveryId = null;
+    const bar = document.getElementById('ordersUserFilterBar');
+    if (bar) bar.style.display = 'none';
+    loadOrdersTableAdmin();
 };
 
 // ====== دوال عامة للعمليات على المستخدمين ======
@@ -1945,20 +2007,57 @@ window.closeDetailsModal = function() {
 };
 
 // ====== دالة ترقيم الصفحات ======
+// سجل دوال الترقيم — نحفظ الدالة الأصلية ونستدعيها بالمعرّف بدل
+// تحويلها إلى نص (الطريقة القديمة toString() كانت تفشل مع arrow functions
+// ومع المتغيرات المحجوبة مثل pageSize، فلا تعمل أزرار الصفحات إطلاقاً).
+if (!window.__misarPageHandlers) window.__misarPageHandlers = {};
+if (!window.__misarPageHandlerSeq) window.__misarPageHandlerSeq = 0;
+
 function renderPagination(containerId, total, currentPage, pageSize, onPageChange) {
-    const container = document.getElementById(containerId);
+    // داخل لوحة المدير العام نكتب في حاوية gm- المقابلة.
+    let el = null;
+    if (typeof misarIsGmContext === 'function' && misarIsGmContext()) {
+        el = document.getElementById('gm-' + containerId);
+    }
+    const container = el || document.getElementById(containerId);
     if (!container) return;
     const totalPages = Math.ceil(total / pageSize);
     if (totalPages <= 1) {
         container.innerHTML = '';
         return;
     }
+
+    // حفظ الدالة في السجل ثم الاستدعاء بالمعرّف من onclick.
+    // هذا يتجنّب تماماً مشاكل toString() ويحفظ الـ closure والمتغيرات.
+    const key = '__misarPage_' + (++window.__misarPageHandlerSeq);
+    window.__misarPageHandlers[key] = onPageChange;
+
+    // تنظيف معالجات قديمة لنفس الحاوية (تجنّب تراكم لا نهائي)
+    container.dataset.pageHandlerKey = key;
+
     let html = '';
     for (let i = 1; i <= totalPages; i++) {
-        html += `<button class="${i === currentPage ? 'active' : ''}" onclick="(function(){ ${onPageChange.toString()}( ${i} ); })()">${i}</button>`;
+        html += `<button class="${i === currentPage ? 'active' : ''}" data-page="${i}" onclick="window.__misarPageClick('${key}', ${i})">${i}</button>`;
     }
     container.innerHTML = html;
 }
+
+// تصدير دالة الترقيم للاستخدام العام (تحتاجها لوحات الإدارة)
+window.renderPagination = renderPagination;
+
+// مُشغّل التنقل بين الصفحات (مُعرّف مرة واحدة)
+window.__misarPageClick = function (key, page) {
+    const fn = window.__misarPageHandlers && window.__misarPageHandlers[key];
+    if (typeof fn === 'function') {
+        try { fn(page); } catch (e) { console.error('خطأ في التنقل بين الصفحات:', e); }
+    }
+    // تنظيف: أزل المعالجات القديمة التي لم تعد مستخدمة
+    const handlers = window.__misarPageHandlers || {};
+    const keys = Object.keys(handlers);
+    if (keys.length > 50) {
+        keys.slice(0, keys.length - 50).forEach(k => { delete handlers[k]; });
+    }
+};
 // ===================== تصدير الدوال العامة =====================
 window.loadProductsFromDB = loadProductsFromDB;
 window.loadFeaturedProducts = loadFeaturedProducts;

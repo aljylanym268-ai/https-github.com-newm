@@ -269,6 +269,21 @@ function openCheckout() {
 }
 function closeCheckoutModal() { document.getElementById('checkoutModal').classList.remove('active'); }
 
+// ========== إشعار WhatsApp للبائع (عبر Edge Function — بدون أي secrets في المتصفح) ==========
+// قابل للتوسع: أي حدث جديد = تمرير event جديد فقط. جدول whatsapp_notifications
+// يمنع تكرار نفس الحدث للطلب نفسه تلقائياً (قيد UNIQUE على order_id + event).
+async function notifySellerWhatsApp(orderId, event = 'order_created') {
+    try {
+        const { error } = await supabaseClient.functions.invoke('misar-whatsapp', {
+            body: { order_id: orderId, event: event }
+        });
+        if (error) console.warn('[WhatsApp] تعذّر استدعاء الدالة:', error.message);
+    } catch (err) {
+        // شرط 13: فشل الإشعار لا يُفشل إنشاء الطلب إطلاقاً
+        console.warn('[WhatsApp] خطأ غير متوقع:', err && err.message);
+    }
+}
+
 // ========== إنشاء طلب ==========
 async function createOrder(productId, quantity, totalPrice, sellerId, customerName, customerPhone, shippingAddress, center, deliveryFee = 0) {
     if (!appState.user) throw new Error('يجب تسجيل الدخول');
@@ -327,6 +342,8 @@ async function createOrder(productId, quantity, totalPrice, sellerId, customerNa
     if (data) {
         console.log(`✅ [createOrder] Order created with ID: ${data.id}`);
         await sendNotification(sellerId, 'طلب جديد', `لديك طلب جديد من ${customerName}`, { order_id: data.id });
+        // يُستدعى فقط بعد نجاح حفظ الطلب فعلياً في قاعدة البيانات
+        notifySellerWhatsApp(data.id);
     }
     return data;
 }
@@ -444,7 +461,7 @@ async function loadBuyerOrders() {
 async function cancelOrder(orderId) {
     if (!confirm('هل أنت متأكد من إلغاء الطلب؟')) return;
     showLoading(true);
-    try { await updateOrderStatus(orderId, 'cancelled'); showToast('تم إلغاء الطلب', 'success'); await loadBuyerOrdersWithTimeline(); }
+    try { await updateOrderStatus(orderId, 'cancelled'); notifySellerWhatsApp(orderId, 'order_cancelled'); showToast('تم إلغاء الطلب', 'success'); await loadBuyerOrdersWithTimeline(); }
     catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); }
 }
 
@@ -1297,6 +1314,7 @@ async function completeDelivery(orderId, otpEntered) {
                 `طلبك #${orderId.slice(0,8)} تم توصيله بنجاح`);
             await sendNotification(updatedOrder.seller_id, 'تم توصيل الطلب',
                 `طلب #${orderId.slice(0,8)} تم توصيله بواسطة المندوب`);
+            notifySellerWhatsApp(orderId, 'order_delivered');
 
             showToast('تم تأكيد التوصيل بنجاح', 'success');
             await refreshDeliveryDashboard();

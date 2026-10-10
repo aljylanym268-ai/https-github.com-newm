@@ -108,6 +108,11 @@ async function createReturn(orderId, productId, quantity, reason, notes = '', im
       } catch (e) { console.warn('Notification error:', e); }
     }
 
+    // إشعار WhatsApp للبائع عن طلب الاسترجاع (بعد نجاح الإنشاء فقط)
+    if (typeof notifySellerWhatsApp === 'function' && orderId) {
+      notifySellerWhatsApp(orderId, 'return_requested');
+    }
+
     showToast('✅ تم إنشاء طلب الاسترجاع بنجاح', 'success');
     return directData || true;
   } catch (error) {
