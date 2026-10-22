@@ -125,6 +125,7 @@ async function refreshFounderDashboard() {
                 case 'properties': loadPropertiesTable(); break;
                 case 'services': loadServicesTableAdmin(); break;
                 case 'orders': loadOrdersTableAdmin(); break;
+                case 'misar-tech': if (typeof loadMisarTechRequests === 'function') loadMisarTechRequests(); break;
                 case 'reports': loadReportsTable(); break;
                 case 'logs': loadLogsTable(); break;
                 case 'banners': if (typeof refreshBannersAdmin === 'function') await refreshBannersAdmin(); break;
@@ -161,6 +162,7 @@ window.switchFounderTab = function (tabId) {
         case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
         case 'online': if (typeof initFounderOnlineTab === 'function') initFounderOnlineTab(); break;
         case 'general-manager': if (typeof misarRenderGmAdminPanel === 'function') misarRenderGmAdminPanel(); break;
+        case 'notification-control': if (typeof initFounderControlCenter === 'function') initFounderControlCenter(); break;
     }
 };
 

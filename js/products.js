@@ -449,20 +449,118 @@ function editProduct(id) { const p = appState.seller.products.find(p => p.id ===
 function confirmDelete(id) { if (confirm('هل أنت متأكد من حذف هذا المنتج؟')) { showLoading(true); deleteProduct(id).then(async () => { showToast('تم الحذف', 'success'); await refreshSellerDashboard(); await loadProductsFromDB(); loadMarketProducts(); loadFeaturedProducts(); }).catch(err => showToast(err.message, 'error')).finally(() => showLoading(false)); } }
 function adjustStock(id) { const p = appState.seller.products.find(p => p.id === id); if (!p) return; const newStock = prompt('أدخل الكمية الجديدة:', p.stock || 0); if (newStock !== null && !isNaN(parseInt(newStock))) { showLoading(true); updateProduct(id, { stock: parseInt(newStock) }).then(() => { showToast('تم تحديث الكمية', 'success'); refreshSellerDashboard(); }).catch(err => showToast(err.message, 'error')).finally(() => showLoading(false)); } }
 function viewOrderDetails(orderId) { const order = appState.seller.orders.find(o => o.id === orderId); if (!order) return; let html = `<p><strong>العميل:</strong> ${order.customer_name || 'غير محدد'}</p><p><strong>الهاتف:</strong> ${order.customer_phone || 'غير محدد'}</p><p><strong>العنوان:</strong> ${order.shipping_address || 'غير محدد'}</p><p><strong>التاريخ:</strong> ${new Date(order.created_at).toLocaleString('ar-EG')}</p><h4 style="margin:15px 0 10px;">المنتجات:</h4>`; const product = order.products || {}; const _df = Number(order.delivery_fee || 0); const _items = Number(order.total_price || 0) - _df; html += `<div style="display:flex; justify-content:space-between;"><span>${escapeHTML(product.name)}</span><span>${_items.toFixed(0)} ج.م</span></div>`; html += `<div style="font-size:0.9rem; color:#666; margin-top:2px;"><strong>الكمية المطلوبة: ${order.quantity} وحدة</strong></div>`; html += `<hr style="margin:12px 0; border:none; border-top:1px dashed #ccc;">`; html += `<h3 style="color:#1a237e;">الإجمالي: ${_items.toFixed(0)} ج.م</h3>`; document.getElementById('orderDetails').innerHTML = html; const select = document.getElementById('orderStatusSelect'); select.innerHTML = ['pending','confirmed','prepared','picked_up','in_delivery','delivered','cancelled'].map(s => `<option value="${s}" ${order.status === s ? 'selected' : ''}>${getStatusText(s)}</option>`).join(''); select.dataset.orderId = orderId; document.getElementById('orderModal').classList.add('active'); }
+async function openSellerOrderFromPush(orderId) {
+    if (!orderId || !appState.user) return;
+    const url = new URL(window.location.href);
+    const clearPushRoute = () => {
+        url.searchParams.delete('pushOrder');
+        window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    };
+
+    if (appState.userData.account_type !== 'seller' ||
+        (appState.userData.status && appState.userData.status !== 'approved')) {
+        showToast('سجّل الدخول بحساب البائع المعتمد المرتبط بهذا الإشعار لفتح الطلب.', 'warning');
+        return;
+    }
+
+    if (!document.querySelector('#sellerDashboardScreen.active')) {
+        showScreen('sellerDashboardScreen');
+    }
+    try {
+        const { data: access, error } = await supabaseClient
+            .from('orders')
+            .select('id')
+            .eq('id', orderId)
+            .eq('seller_id', appState.user.id)
+            .maybeSingle();
+        if (error) throw error;
+        if (!access) throw new Error('الطلب غير موجود أو لا يتبع حساب البائع الحالي.');
+
+        const orders = await loadSellerOrders(appState.user.id);
+        const order = orders.find(item => item.id === orderId);
+        if (!order) throw new Error('تعذر تحميل تفاصيل الطلب.');
+        appState.seller.orders = orders;
+        updateSellerStats();
+        switchSellerTab('orders');
+        viewOrderDetails(orderId);
+        clearPushRoute();
+    } catch (error) {
+        console.error('تعذر فتح الطلب من إشعار Push:', error);
+        showToast(error.message || 'تعذر فتح الطلب من الإشعار.', 'error');
+    }
+}
+async function openOrderFromPush(orderId) {
+    if (!orderId || !appState.user) return;
+    const url = new URL(window.location.href);
+    const clearPushRoute = () => {
+        url.searchParams.delete('pushOrder');
+        window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    };
+    const accountType = appState.userData?.account_type;
+
+    if (accountType === 'seller') {
+        await openSellerOrderFromPush(orderId);
+        return;
+    }
+
+    try {
+        const { data: order, error } = await supabaseClient
+            .from('orders')
+            .select('id, buyer_id, seller_id, delivery_id, status')
+            .eq('id', orderId)
+            .maybeSingle();
+        if (error) throw error;
+        if (!order) throw new Error('الطلب غير موجود أو لا يتبع حسابك.');
+
+        if (accountType === 'client' && order.buyer_id === appState.user.id) {
+            showScreen('ordersScreen');
+        } else if (accountType === 'delivery' &&
+            (order.delivery_id === appState.user.id ||
+                (order.status === 'prepared' && !order.delivery_id))) {
+            showScreen('deliveryDashboardScreen');
+            switchDeliveryTab(order.delivery_id === appState.user.id ? 'my' : 'available');
+        } else {
+            throw new Error('هذا الإشعار لا يخص حسابك.');
+        }
+        clearPushRoute();
+    } catch (error) {
+        console.error('تعذر فتح الطلب من إشعار Push:', error);
+        showToast(error.message || 'تعذر فتح الطلب من الإشعار.', 'error');
+        clearPushRoute();
+    }
+}
+window.openOrderFromPush = openOrderFromPush;
 async function updateOrderStatusFromModal() { const select = document.getElementById('orderStatusSelect'); const orderId = select.dataset.orderId; const newStatus = select.value; showLoading(true); try { await updateOrderStatus(orderId, newStatus); showToast('تم تحديث الحالة', 'success'); closeOrderModal(); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 function closeOrderModal() { document.getElementById('orderModal').classList.remove('active'); }
 function closeProductModal() { document.getElementById('productModal').classList.remove('active'); }
 function showNotifications() { const newOrders = appState.seller.orders.filter(o => o.status === 'pending'); if (newOrders.length === 0) { showToast('لا توجد إشعارات جديدة', 'info'); return; } let msg = 'طلبات جديدة:\n'; newOrders.forEach(o => msg += `- طلب #${o.id.slice(0,8)} بمبلغ ${o.total_price} ج.م\n`); alert(msg); document.getElementById('sellerNotificationBadge').style.display = 'none'; }
 function exportOrdersCSV() { const orders = getVisibleSellerOrders(appState.seller.orders); let csv = 'رقم الطلب,العميل,الهاتف,العنوان,التاريخ,الحالة,الإجمالي\n'; orders.forEach(o => { const items = Number(o.total_price || 0) - Number(o.delivery_fee || 0); csv += `${o.id},${o.customer_name || ''},${o.customer_phone || ''},${o.shipping_address || ''},${new Date(o.created_at).toLocaleDateString()},${o.status},${items.toFixed(0)}\n`; }); const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'orders.csv'; link.click(); }
 async function confirmOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('buyer_id').eq('id', orderId).maybeSingle(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود أو لا يمكن للبائع الوصول إليه'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب؛ أصلح buyer_id في قاعدة البيانات'); const updatedOrder = await updateOrderStatus(orderId, 'confirmed'); if (!updatedOrder) { const { data: currentOrder, error: verifyError } = await supabaseClient.from('orders').select('status').eq('id', orderId).maybeSingle(); if (verifyError) throw verifyError; if (!currentOrder || currentOrder.status !== 'confirmed') throw new Error('تعذر تحديث حالة الطلب؛ تحقق من صلاحيات قاعدة البيانات'); } await sendNotification(order.buyer_id, 'تم تأكيد طلبك', `تم تأكيد طلبك #${orderId.slice(0,8)}`); if (typeof notifySellerWhatsApp === 'function') notifySellerWhatsApp(orderId, 'order_accepted'); showToast('تم تأكيد الطلب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
-async function prepareOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('*, buyer_id, center').eq('id', orderId).single(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب'); const updatedOrder = await updateOrderStatus(orderId, 'prepared'); if (!updatedOrder) throw new Error('تعذر تحديث حالة الطلب'); await sendNotification(order.buyer_id, 'تم تجهيز طلبك', `طلبك #${orderId.slice(0,8)} جاهز وسيتم توصيله قريباً`); if (order.center) await notifyDeliveryPersonsInCenter(order.center, orderId, 'شحنة جاهزة في منطقتك', `طلب #${orderId.slice(0,8)} جاهز للتوصيل في ${order.center}`); if (typeof notifySellerWhatsApp === 'function') notifySellerWhatsApp(orderId, 'order_prepared'); showToast('تم تحديث الحالة إلى "تم التجهيز" وإشعار المناديب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
+async function prepareOrderSeller(orderId) { showLoading(true); try { const { data: order, error: fetchError } = await supabaseClient.from('orders').select('*, buyer_id, center').eq('id', orderId).single(); if (fetchError) throw fetchError; if (!order) throw new Error('الطلب غير موجود'); if (!order.buyer_id) throw new Error('بيانات العميل غير متوفرة لهذا الطلب'); const updatedOrder = await updateOrderStatus(orderId, 'prepared'); if (!updatedOrder) throw new Error('تعذر تحديث حالة الطلب'); await sendNotification(order.buyer_id, 'تم تجهيز طلبك', `طلبك #${orderId.slice(0,8)} جاهز وسيتم توصيله قريباً`); if (typeof notifySellerWhatsApp === 'function') notifySellerWhatsApp(orderId, 'order_prepared'); showToast('تم تحديث الحالة إلى "تم التجهيز" وإشعار المناديب', 'success'); await refreshSellerDashboard(); } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); } }
 
 // ========== خدمات ==========
 function loadServices() {
     const container = document.getElementById('servicesList');
     if (!container) return;
 
-    // إضافة الرسالة الترحيبية في أعلى الصفحة
+    const services = Array.isArray(appState.services) ? [...appState.services] : [];
+    const isMaintenance = s => String(s.id) === '1' || s.name === 'خدمات الصيانة';
+    const isMisarTech = s => s.link === 'misarTechScreen' || s.id === 'misar-tech';
+    const firstMaintenanceIndex = services.findIndex(isMaintenance);
+    const misarTechService = {
+        id: 'misar-tech',
+        name: 'MISAR TECH — البرمجة والحلول الرقمية',
+        description: 'اطلب تصميم موقع إلكتروني أو إنشاء منصة أو تطبيق أو نظام لإدارة أعمالك',
+        price: 'حسب متطلبات المشروع',
+        icon: 'fas fa-code',
+        status: 'available',
+        link: 'misarTechScreen'
+    };
+    const techInsertIndex = firstMaintenanceIndex === -1 ? 0 :
+        services.slice(0, firstMaintenanceIndex).filter(s => !isMisarTech(s) && !isMaintenance(s)).length;
+    const displayServices = services.filter(s => !isMisarTech(s) && !isMaintenance(s));
+    displayServices.splice(Math.min(techInsertIndex, displayServices.length), 0, misarTechService);
+
     let headerHtml = `
         <div class="services-header-message">
             <div class="services-header-icon">🚀</div>
@@ -473,7 +571,7 @@ function loadServices() {
     container.innerHTML = headerHtml;
 
     // عرض الخدمات كبطاقات
-    appState.services.forEach(s => {
+    displayServices.forEach(s => {
         const card = document.createElement('div');
         card.className = 'service-card';
 
@@ -487,21 +585,52 @@ function loadServices() {
 
         if (isComingSoon) {
             statusBadge = `<span class="service-status-badge coming-soon"><i class="fas fa-clock"></i> قريبًا</span>`;
-            buttonHtml = `<button class="book-service-btn coming-soon-btn" disabled><i class="fas fa-bell"></i> 🔔 قريبًا</button>`;
+            buttonHtml = `<button type="button" class="book-service-btn coming-soon-btn" disabled><i class="fas fa-bell"></i> 🔔 قريبًا</button>`;
         } else if (isAvailable) {
             statusBadge = `<span class="service-status-badge available"><i class="fas fa-check-circle"></i> متاحة الآن</span>`;
-            buttonHtml = `<button class="book-service-btn" onclick="bookService(${s.id})"><i class="fas fa-calendar-check"></i> حجز الخدمة</button>`;
+            buttonHtml = `<button type="button" class="book-service-btn"><i class="fas fa-calendar-check"></i> حجز الخدمة</button>`;
         } else if (isTemporarilyUnavailable) {
             statusBadge = `<span class="service-status-badge unavailable"><i class="fas fa-exclamation-circle"></i> متوقفة مؤقتًا</span>`;
-            buttonHtml = `<button class="book-service-btn coming-soon-btn" disabled><i class="fas fa-pause-circle"></i> غير متاحة</button>`;
+            buttonHtml = `<button type="button" class="book-service-btn coming-soon-btn" disabled><i class="fas fa-pause-circle"></i> غير متاحة</button>`;
         }
 
+        // أي خدمة ذات رابط (مثل MISAR TECH) → كارت قابل للنقر يفتح شاشتها
+        if (s.link) {
+            card.style.cursor = 'pointer';
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', s.name);
+            card.addEventListener('click', () => showScreen(s.link));
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    showScreen(s.link);
+                }
+            });
+            buttonHtml = `<button type="button" class="book-service-btn"><i class="fas fa-arrow-left"></i> ${s.link === 'misarTechScreen' ? 'اطلب مشروعك' : 'اكتشف القسم'}</button>`;
+        } else {
+            card.style.cursor = 'pointer';
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', `تفاصيل ${s.name}`);
+            card.addEventListener('click', () => openServiceDetails(s));
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openServiceDetails(s);
+                }
+            });
+        }
+
+        const serviceTitle = isMisarTech(s)
+            ? '<span class="service-brand-name" dir="ltr">MISAR TECH</span><span class="service-brand-description">البرمجة والحلول الرقمية</span>'
+            : escapeHTML(s.name);
         card.innerHTML = `
             <div class="service-card-inner">
                 <div class="service-header">
                     <div class="service-icon"><i class="${s.icon}"></i></div>
                     <div class="service-header-info">
-                        <div class="service-title">${escapeHTML(s.name)}</div>
+                        <div class="service-title">${serviceTitle}</div>
                         <div class="service-price">${escapeHTML(s.price)}</div>
                     </div>
                     ${statusBadge}
@@ -513,8 +642,40 @@ function loadServices() {
                 </div>
             </div>
         `;
+        const actionButton = card.querySelector('.book-service-btn:not(:disabled)');
+        if (actionButton) {
+            actionButton.addEventListener('click', event => {
+                event.stopPropagation();
+                if (s.link) showScreen(s.link);
+                else if (isAvailable) bookService(s.id);
+            });
+        }
         container.appendChild(card);
     });
+}
+function openServiceDetails(service) {
+    const status = service.status || 'coming_soon';
+    const statusText = status === 'available' ? 'متاحة الآن' :
+        status === 'temporarily_unavailable' ? 'متوقفة مؤقتًا' : 'قريبًا';
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'serviceDetailsModal';
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeServiceDetails();
+    });
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:520px; width:94%;">
+            <h3 style="color:#1a237e; margin-bottom:12px;"><i class="${escapeHTML(service.icon || 'fas fa-concierge-bell')}"></i> ${escapeHTML(service.name)}</h3>
+            <p style="line-height:1.8;">${escapeHTML(service.description || '')}</p>
+            ${service.price ? `<p style="margin-top:10px;"><strong>السعر:</strong> ${escapeHTML(service.price)}</p>` : ''}
+            <p style="margin-top:8px;"><strong>الحالة:</strong> ${statusText}</p>
+            ${service.features?.length ? `<div class="service-features" style="margin-top:12px;">${service.features.map(f => `<span class="service-feature"><i class="fas fa-check-circle"></i> ${escapeHTML(f)}</span>`).join('')}</div>` : ''}
+            <button type="button" class="google-btn" style="width:100%; margin-top:18px;" onclick="closeServiceDetails()">إغلاق</button>
+        </div>`;
+    document.body.appendChild(modal);
+}
+function closeServiceDetails() {
+    document.getElementById('serviceDetailsModal')?.remove();
 }
 function bookService(serviceId) {
     const service = appState.services.find(s => s.id === serviceId);
@@ -522,6 +683,7 @@ function bookService(serviceId) {
         showToast('الخدمة غير موجودة', 'error');
         return;
     }
+    if (service.link === 'misarTechScreen') { showScreen('misarTechScreen'); return; }
     if (service.status === 'coming_soon') {
         showToast('هذه الخدمة قادمة قريباً، تابعنا لإطلاقها!', 'info');
         return;
@@ -542,7 +704,7 @@ async function addSellerStoreTools() { const toolsDiv = document.getElementById(
 async function updateStoreTools() { if (!appState.user || appState.userData.account_type !== 'seller') return; const linkDisplay = document.getElementById('storeLinkDisplay'); const qrContainer = document.getElementById('storeQRCode'); if (!linkDisplay || !qrContainer) return; const storeUrl = getStoreUrl(); linkDisplay.textContent = storeUrl; generateStoreQR(storeUrl, 'storeQRCode'); }
 
 // ========== عرض صفحة متجر البائع ==========
-async function showStorePage(identifier) { showLoading(true); let sellerData = null; const isUserId = identifier.startsWith('user_') || (identifier.length > 20 && identifier.includes('-')); let publicError = null; /* المسار الأساسي: دالة RPC من نوع SECURITY DEFINER — هي المسار الوحيد المتاح للزائر غير المسجل، لأن جدول user_data مغلق للزوار بـ RLS (الاستعلام المباشر يرجع صفر صفوف). الدالة تُرجع الأعمدة العامة فقط: الاسم واسم المستخدم والصورة والنبذة — بلا هاتف ولا عنوان ولا بريد. */ const rpcName = isUserId ? 'get_public_store' : 'get_public_store_by_username'; const { data: rpcData, error: rpcError } = await supabaseClient.rpc(rpcName, { p_identifier: identifier }); const publicRow = Array.isArray(rpcData) ? rpcData[0] : rpcData; if (!rpcError && publicRow) sellerData = publicRow; else publicError = rpcError; /* مسار احتياطي: الجدول الأصلي (للمسجلين، وفي حال الدالة غير مثبّتة بعد) */ if (!sellerData) { const { data, error } = isUserId ? await supabaseClient.from('user_data').select('*').eq('id', identifier).maybeSingle() : await supabaseClient.from('user_data').select('*').eq('username', identifier).maybeSingle(); if (!error && data) sellerData = data; } if (!sellerData) { showLoading(false); showToast(publicError ? 'تعذر تحميل بيانات المتجر — نفّذ fix_public_store_rpc.sql في Supabase' : 'البائع غير موجود أو اسم المتجر غير صحيح', 'error'); showScreen('homeScreen'); return; } const { data: products } = await supabaseClient.from('products').select('*').eq('user_id', sellerData.id).order('created_at', { ascending: false }); const container = document.getElementById('storeContent'); const avatarUrl = sellerData.image_url || ''; const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" alt="صورة البائع">` : '<i class="fas fa-user" style="font-size:3rem; color:#aaa;"></i>'; const sellerName = sellerData.name || sellerData.email?.split('@')[0] || 'بائع'; const bioHtml = sellerData.bio ? `<div class="store-bio">${escapeHTML(sellerData.bio)}</div>` : ''; let productsHtml = '<div class="products-grid" id="storeProductsGrid">'; if (products && products.length) { products.forEach(p => { const img = p.images && p.images[0] ? p.images[0] : (p.image_url || ''); productsHtml += `<div class="product-card" onclick="openProductDetailFromStore('${p.id}')"><div class="product-image"><img src="${img}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div>📦</div>';"> <div class="product-tag">${p.category || 'عام'}</div></div><div class="product-info"><div class="product-title">${escapeHTML(p.name)}</div><div class="product-price">${p.price} ج.م</div>${getProductRatingHTML(p)}<button class="add-to-cart" onclick="event.stopPropagation(); addToCart('${p.id}')"><i class="fas fa-cart-plus"></i> إضافة للسلة</button></div></div>`; }); } else { productsHtml += '<p style="grid-column:span2; text-align:center; padding:30px;">لا توجد منتجات متاحة حالياً</p>'; } productsHtml += '</div>'; container.innerHTML = `<div class="seller-store-header"><div class="seller-store-avatar">${avatarHtml}</div><div class="seller-store-name">${escapeHTML(sellerName)}</div><div class="seller-store-subtitle"><i class="fas fa-store"></i> متجر مسجل على Misar Systems</div>${bioHtml}</div><div class="store-products"><div class="section-title"><i class="fas fa-box"></i> جميع المنتجات</div>${productsHtml}</div>`; showLoading(false); showScreen('storeScreen'); }
+async function showStorePage(identifier) { showLoading(true); let sellerData = null; const isUserId = identifier.startsWith('user_') || (identifier.length > 20 && identifier.includes('-')); let publicError = null; /* تعرض بيانات المتجر العامة عبر RPC محدودة الحقول، دون قراءة user_data مباشرة. */ const rpcName = isUserId ? 'get_public_store' : 'get_public_store_by_username'; const { data: rpcData, error: rpcError } = await supabaseClient.rpc(rpcName, { p_identifier: identifier }); const publicRow = Array.isArray(rpcData) ? rpcData[0] : rpcData; if (!rpcError && publicRow) sellerData = publicRow; else publicError = rpcError; if (!sellerData) { showLoading(false); showToast(publicError ? 'تعذر تحميل بيانات المتجر العامة — تحقق من إعداد get_public_store في Supabase' : 'البائع غير موجود أو اسم المتجر غير صحيح', 'error'); showScreen('homeScreen'); return; } const { data: products } = await supabaseClient.from('products').select('*').eq('user_id', sellerData.id).order('created_at', { ascending: false }); const container = document.getElementById('storeContent'); const avatarUrl = sellerData.image_url || ''; const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" alt="صورة البائع">` : '<i class="fas fa-user" style="font-size:3rem; color:#aaa;"></i>'; const sellerName = sellerData.name || sellerData.email?.split('@')[0] || 'بائع'; const bioHtml = sellerData.bio ? `<div class="store-bio">${escapeHTML(sellerData.bio)}</div>` : ''; let productsHtml = '<div class="products-grid" id="storeProductsGrid">'; if (products && products.length) { products.forEach(p => { const img = p.images && p.images[0] ? p.images[0] : (p.image_url || ''); productsHtml += `<div class="product-card" onclick="openProductDetailFromStore('${p.id}')"><div class="product-image"><img src="${img}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div>📦</div>';"> <div class="product-tag">${p.category || 'عام'}</div></div><div class="product-info"><div class="product-title">${escapeHTML(p.name)}</div><div class="product-price">${p.price} ج.م</div>${getProductRatingHTML(p)}<button class="add-to-cart" onclick="event.stopPropagation(); addToCart('${p.id}')"><i class="fas fa-cart-plus"></i> إضافة للسلة</button></div></div>`; }); } else { productsHtml += '<p style="grid-column:span2; text-align:center; padding:30px;">لا توجد منتجات متاحة حالياً</p>'; } productsHtml += '</div>'; container.innerHTML = `<div class="seller-store-header"><div class="seller-store-avatar">${avatarHtml}</div><div class="seller-store-name">${escapeHTML(sellerName)}</div><div class="seller-store-subtitle"><i class="fas fa-store"></i> متجر مسجل على Misar Systems</div>${bioHtml}</div><div class="store-products"><div class="section-title"><i class="fas fa-box"></i> جميع المنتجات</div>${productsHtml}</div>`; showLoading(false); showScreen('storeScreen'); }
 function openProductDetailFromStore(productId) { const product = appState.products.find(p => p.id === productId); if (product) openProductDetail(product); else showToast('المنتج غير موجود', 'error'); }
 
 // ===================== إضافة دالة إظهار/إخفاء كلمة المرور =====================
@@ -2087,6 +2249,7 @@ window.editProduct = editProduct;
 window.confirmDelete = confirmDelete;
 window.adjustStock = adjustStock;
 window.viewOrderDetails = viewOrderDetails;
+window.openSellerOrderFromPush = openSellerOrderFromPush;
 window.updateOrderStatusFromModal = updateOrderStatusFromModal;
 window.closeOrderModal = closeOrderModal;
 window.closeProductModal = closeProductModal;

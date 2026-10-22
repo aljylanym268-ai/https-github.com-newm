@@ -1,6 +1,14 @@
 // ========== قاعدة البيانات ==========
 const SUPABASE_URL = 'https://wwojtkxwmgkrudtevbcb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Rqi9qMZgIrslWSDc61gG-A_QGQxcvNr';
+
+// حماية: قد يفشل تحميل مكتبة supabase من الـ CDN (شبكة/حجب) فتصبح غير معرّفة،
+// وهذا كان يوقف تنفيذ هذا الملف بالكامل فتتعطل كل الدوال (ومنها مركز الإشعارات).
+// هنا نتعامل مع الحالة برسالة واضحة بدل انهيار صامت.
+if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+    console.error('❌ مكتبة supabase-js لم تُحمّل من الـ CDN. تحقق من الاتصال بالإنترنت أو من حجب cdn.jsdelivr.net.');
+    throw new Error('supabase-js CDN failed to load (supabase is not defined)');
+}
 const { createClient } = supabase;
 
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -309,12 +317,12 @@ async function saveAddressAsDefaultIfRequested(prefix, governorate, center, addr
         if (center) updates.center = center;
         if (address) updates.address = address;
         if (phone) updates.phone = phone;
-        const { error } = await supabaseClient.from('user_data').upsert(updates, { onConflict: 'id' });
+        const { error } = await supabaseClient.from('user_data').upsert(withProtectedRole(updates), { onConflict: 'id' });
         if (error) {
             // الأعمدة الجديدة قد لا تكون موجودة بعد — نحفظ المتوفر فقط
             const base = { id: appState.user.id };
             if (phone) base.phone = phone;
-            const { error: e2 } = await supabaseClient.from('user_data').upsert(base, { onConflict: 'id' });
+            const { error: e2 } = await supabaseClient.from('user_data').upsert(withProtectedRole(base), { onConflict: 'id' });
             if (e2) { console.warn('⚠️ فشل حفظ العنوان الأساسي:', e2); return; }
         }
         if (governorate) appState.userData.governorate = governorate;
@@ -1050,6 +1058,8 @@ async function logout(showConfirm = true) {
         if (error) throw error;
         sessionStorage.removeItem('pendingAccountType');
         localStorage.removeItem('misarPendingAccountType');
+        // مسح ذاكرة الدور المحلية حتى لا يرثها حساب آخر على نفس الجهاز
+        try { localStorage.removeItem('misarRoleCache'); } catch (e) { /* تجاهل */ }
         appState.user = null;
         appState.userData = {};
         toggleLoginMenu(false);
@@ -1094,6 +1104,17 @@ function toggleFounderMenuItem(isFounder) {
 function toggleGeneralManagerMenuItem(isGeneralManager) {
     const gmItem = document.getElementById('generalManagerDashboardMenuItem');
     if (gmItem) gmItem.style.display = isGeneralManager ? 'flex' : 'none';
+    const profile = isGeneralManager && appState.user && typeof misarGmProfile === 'function'
+        ? misarGmProfile(appState.user.id)
+        : null;
+    const label = profile?.label?.trim() || '';
+    const publicTitle = label
+        ? (/^لوحة(?:\s|$)/.test(label) ? label : `لوحة ${label}`)
+        : 'لوحة المدير العام';
+    const menuTitle = gmItem?.querySelector('.menu-text');
+    if (menuTitle) menuTitle.textContent = publicTitle;
+    const dashboardTitle = document.querySelector('#generalManagerDashboardScreen .app-header h1');
+    if (dashboardTitle) dashboardTitle.textContent = publicTitle;
 }
 
 // توافق خلفي: إعادة الاقتراحات لشكلها الافتراضي عند تسجيل الخروج
@@ -1113,6 +1134,42 @@ async function loadUserData() {
             .eq('id', appState.user.id)
             .maybeSingle();
 
+        // ============================================================
+        // ذاكرة الدور المحلية (Anti-Hide Guard):
+        // لو فشلت قراءة user_data لسبب مؤقت (RLS/شبكة) لا يجوز أن تختفي
+        // أي لوحة (بائع / مندوب / مؤسس / مدير عام). نحفظ آخر دور معروف
+        // محلياً (أي دور غير 'client') ونستخدمه كاحتياط أخير.
+        // لا نرقّي حساب عميل إلى دور لم يُرَ من قبل على هذا الجهاز.
+        // ============================================================
+        const PROTECTED_TYPES = ['founder', 'admin', 'general_manager'];
+        // الأدوار التي لها لوحة ويجوز تذكّرها محلياً
+        const DASHBOARD_TYPES = ['seller', 'delivery', 'founder', 'admin', 'general_manager'];
+        function readCachedRole() {
+            try {
+                const raw = localStorage.getItem('misarRoleCache');
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (obj && obj.id === appState.user.id && DASHBOARD_TYPES.includes(obj.account_type)) {
+                    return obj;
+                }
+            } catch (e) { /* تجاهل */ }
+            return null;
+        }
+        function writeCachedRole(accountType, status) {
+            try {
+                if (DASHBOARD_TYPES.includes(accountType)) {
+                    localStorage.setItem('misarRoleCache', JSON.stringify({
+                        id: appState.user.id,
+                        account_type: accountType,
+                        status: status || 'approved'
+                    }));
+                } else if (accountType === 'client') {
+                    // حساب عميل صريح ⇒ لا داعي لاحتياطي (نتجنّب إظهار لوحة قديمة بالخطأ)
+                    localStorage.removeItem('misarRoleCache');
+                }
+            } catch (e) { /* تجاهل */ }
+        }
+
         const defaultData = {
             id: appState.user.id,
             name: appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || '',
@@ -1124,14 +1181,26 @@ async function loadUserData() {
             center: appState.user.user_metadata?.center || '',
             village: appState.user.user_metadata?.village || '',
             image_url: appState.user.user_metadata?.avatar_url || '',
-            account_type: appState.user.user_metadata?.account_type || 'client',
-            status: appState.user.user_metadata?.status || 'approved'
+            account_type: (function () {
+                // الأولوية: ذاكرة الدور المحلي (بائع/مندوب/مؤسس...) > user_metadata > client
+                const cached = readCachedRole();
+                const meta = appState.user.user_metadata?.account_type;
+                if (cached && DASHBOARD_TYPES.includes(cached.account_type)) return cached.account_type;
+                return meta || 'client';
+            })(),
+            status: (function () {
+                // لو عندنا دور متذكّر محلياً، نستخدم حالته (approved) حتى لا يختفي
+                // العنصر بسبب status='pending'/'suspended' عند فشل القراءة.
+                const cached = readCachedRole();
+                return cached ? (cached.status || 'approved') : (appState.user.user_metadata?.status || 'approved');
+            })()
         };
 
         if (error) {
             const isPermissionIssue = error?.code === '42501' || /permission denied|does not exist|not exist|table .* not found/i.test(String(error?.message || ''));
             console.warn('تم استخدام بيانات محلية بدلاً من user_data بسبب:', error?.message || error);
             appState.userData = defaultData;
+            // لا نكتب في قاعدة البيانات هنا أبداً — الاعتماد على القراءة أو الذاكرة المحلية.
             // لا نكتب أي بيانات عند وجود خطأ قراءة. الكتابة هنا كانت
             // تستبدل صف المستخدم بقيم افتراضية (account_type='client')
             // وتُفقد الصلاحيات. الاعتماد الآن على القراءة فقط.
@@ -1140,6 +1209,8 @@ async function loadUserData() {
             }
         } else if (data) {
             appState.userData = data;
+            // حفظ الدور المحمي محلياً — حتى لو فشل أي قراءة لاحقة لا تختفي اللوحة.
+            writeCachedRole(data.account_type, data.status);
         } else {
             // مهم جداً: data === null هنا تعني أحد أمرين:
             //   (أ) الصف غير موجود فعلاً  → يجوز إنشاؤه.
@@ -1202,13 +1273,17 @@ async function loadUserData() {
             isFounder: isFounder,
             rowFound: (typeof data !== 'undefined' && data) ? true : false
         };
-        console.log('🔍 تشخيص حساب المؤسس:', window.__founderDiag);
+        console.log('🔍 تشخيص دور الحساب:', window.__founderDiag);
 
-        // إذا كان البريد هو بريد المؤسس ولم يُقرأ النوع كـ founder، نُظهر تنبيهاً
-        // واضحاً بسبب المشكلة وكيفية حلها (بدل أن تختفي اللوحة صامتة).
+        // إذا كان الحساب له دور لوحة (بائع/مندوب/مؤسس/مدير عام) لكن النوع
+        // لم يُقرأ صحيحاً ⇒ نُظهر تنبيهاً واضحاً بالسبب والحل بدل أن تختفي
+        // اللوحة صامتة.
         try {
             const em = (appState.user.email || '').toLowerCase();
-            if (em === 'sa3dgelany@gmail.com' && !isFounder) {
+            const WATCH_EMAILS = ['sa3dgelany@gmail.com', 'aljylanym268@gmail.com'];
+            const cachedRole = readCachedRole();
+            const hasDashboardRole = isFounder || isApprovedSeller || isApprovedDelivery || !!cachedRole;
+            if (WATCH_EMAILS.includes(em) && !hasDashboardRole) {
                 if (typeof showFounderDiagBanner === 'function') {
                     showFounderDiagBanner(window.__founderDiag);
                 }
@@ -1250,6 +1325,7 @@ async function loadUserData() {
         }
         const isGeneralManager = typeof misarIsGeneralManager === 'function' && misarIsGeneralManager();
         toggleGeneralManagerMenuItem(isGeneralManager);
+        if (isGeneralManager) updateUserInfo();
 
         await updateCartBadgeFromDB();
         await loadUnreadNotificationsCount();
@@ -1292,9 +1368,23 @@ function updateUserInfo(isGuest = false) {
         const name = appState.userData.name || appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || 'مستخدم';
         const email = appState.user.email;
         const avatar = appState.userData.image_url || appState.user.user_metadata?.avatar_url;
+        const managerLabel = appState.userData.account_type === 'general_manager' &&
+            typeof misarGmProfile === 'function'
+            ? misarGmProfile(appState.user.id).label
+            : '';
 
-        if (welcomeName) welcomeName.textContent = `مرحباً، ${name}`;
-        if (profileName) profileName.textContent = name;
+        const setDisplayName = (element, prefix) => {
+            if (!element) return;
+            element.textContent = prefix + name;
+            if (managerLabel) {
+                const label = document.createElement('span');
+                label.className = 'gm-public-label';
+                label.textContent = managerLabel;
+                element.appendChild(label);
+            }
+        };
+        setDisplayName(welcomeName, 'مرحباً، ');
+        setDisplayName(profileName, '');
         if (profileEmail) profileEmail.textContent = email;
 
         if (avatar) {
@@ -1349,7 +1439,7 @@ async function saveLocation() {
         try {
             const { error } = await supabaseClient
                 .from('user_data')
-                .upsert({ id: appState.user.id, governorate, center }, { onConflict: 'id' });
+                .upsert(withProtectedRole({ governorate, center }), { onConflict: 'id' });
             if (error) throw error;
             appState.userData.governorate = governorate;
             appState.userData.center = center;
@@ -1412,6 +1502,34 @@ function updateProfileLocation() {
 // ============================================================
 // حفظ الملف الشخصي
 // ============================================================
+// ============================================================
+// حارس الدور: أي upsert على user_data يجب أن يحمل account_type
+// و status الحاليين معه، وإلا قد يُكتب الصف جزئياً ويُفقد الدور
+// (وهذا هو سبب اختفاء اللوحات بعد "التعديلات").
+// لا نرقّي أبداً عميلاً إلى دور محمي — نحمل القيمة الحالية فقط.
+// ============================================================
+function withProtectedRole(payload) {
+    const out = Object.assign({ id: appState.user.id }, payload || {});
+    const currentType = appState.userData && appState.userData.account_type;
+    if (currentType) {
+        out.account_type = currentType;
+        out.status = (appState.userData.status) || 'approved';
+    } else {
+        // احتياط أخير من الذاكرة المحلية لحماية الأدوار المحمية
+        try {
+            const raw = localStorage.getItem('misarRoleCache');
+            const cached = raw ? JSON.parse(raw) : null;
+            if (cached && cached.id === appState.user.id &&
+                ['founder', 'admin', 'general_manager'].includes(cached.account_type)) {
+                out.account_type = cached.account_type;
+                out.status = cached.status || 'approved';
+            }
+        } catch (e) { /* تجاهل */ }
+    }
+    return out;
+}
+window.withProtectedRole = withProtectedRole;
+
 async function saveProfile() {
     if (!appState.user) return showToast('يجب تسجيل الدخول أولاً', 'warning');
     const editName = document.getElementById('editName');
@@ -1437,7 +1555,7 @@ async function saveProfile() {
     if (Object.keys(updates).length === 1) return showToast('لا توجد تغييرات', 'info');
     showLoading(true);
     try {
-        const { error } = await supabaseClient.from('user_data').upsert(updates);
+        const { error } = await supabaseClient.from('user_data').upsert(withProtectedRole(updates), { onConflict: 'id' });
         if (error) throw error;
         await loadUserData();
         showToast('تم حفظ التغييرات', 'success');
@@ -1484,7 +1602,7 @@ document.getElementById('avatarUpload')?.addEventListener('change', async functi
 
         const { error: updateError } = await supabaseClient
             .from('user_data')
-            .upsert({ id: appState.user.id, image_url: publicUrl });
+            .upsert(withProtectedRole({ image_url: publicUrl }), { onConflict: 'id' });
         if (updateError) throw updateError;
 
         appState.userData.image_url = publicUrl;
@@ -2008,6 +2126,14 @@ function showScreen(screenId) {
     if (screenId === 'servicesScreen') {
         if (typeof loadServices === 'function') loadServices();
     }
+    if (screenId === 'misarTechScreen' && typeof renderMisarTechServices === 'function') {
+        renderMisarTechServices();
+    }
+    if ((screenId === 'sellerDashboardScreen' || screenId === 'deliveryDashboardScreen' ||
+        screenId === 'profileScreen') &&
+        typeof updatePushNotificationButton === 'function') {
+        updatePushNotificationButton();
+    }
     if (screenId === 'cartScreen') {
         if (typeof loadCart === 'function') loadCart();
     }
@@ -2053,17 +2179,37 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 // ============================================================
 // الدردشة
 // ============================================================
-function openChatbot() {
+function openChatbot(mode = 'general') {
+    window.misarTechChatMode = mode === 'misar-tech';
     const chatbotScreen = document.getElementById('chatbotScreen');
     if (chatbotScreen) chatbotScreen.classList.add('active');
     const badge = document.getElementById('chatbotBadge');
     if (badge) badge.style.display = 'none';
+    const input = document.getElementById('chatInput');
+    if (input) input.placeholder = window.misarTechChatMode
+        ? 'اسأل عن خدمات MISAR TECH أو فكرتك...'
+        : 'اكتب رسالتك...';
     const messages = document.getElementById('chatMessages');
+    if (messages && window.misarTechChatMode && !messages.querySelector('[data-misar-tech-welcome]')) {
+        const welcome = document.createElement('div');
+        welcome.className = 'message bot';
+        welcome.dataset.misarTechWelcome = 'true';
+        welcome.textContent = 'أهلاً بك في MISAR TECH 👋 اسألني عن الموقع أو المتجر أو التطبيق أو النظام الذي يناسب فكرتك، وسأساعدك في تحديد الخطوة التالية.';
+        messages.appendChild(welcome);
+    }
     if (messages) messages.scrollTop = messages.scrollHeight;
+}
+function openMisarTechChat() {
+    openChatbot('misar-tech');
+    const input = document.getElementById('chatInput');
+    if (input) input.focus();
 }
 function closeChatbot() {
     const chatbotScreen = document.getElementById('chatbotScreen');
     if (chatbotScreen) chatbotScreen.classList.remove('active');
+    window.misarTechChatMode = false;
+    const input = document.getElementById('chatInput');
+    if (input) input.placeholder = 'اكتب رسالتك...';
 }
 function sendMessage() {
     const input = document.getElementById('chatInput');
@@ -2073,7 +2219,7 @@ function sendMessage() {
     addMessage(msg, 'user');
     input.value = '';
     showChatTyping(true);
-    getMisarAiResponse(msg).then(reply => {
+    getMisarAiResponse(msg, { misarTech: window.misarTechChatMode === true }).then(reply => {
         showChatTyping(false);
         addMessage(reply, 'bot');
         const messages = document.getElementById('chatMessages');
@@ -2098,7 +2244,7 @@ function showChatTyping(show) {
 function sendSuggestion(text) {
     addMessage(text, 'user');
     showChatTyping(true);
-    getMisarAiResponse(text).then(reply => {
+    getMisarAiResponse(text, { misarTech: window.misarTechChatMode === true }).then(reply => {
         showChatTyping(false);
         addMessage(reply, 'bot');
         const messages = document.getElementById('chatMessages');
@@ -2113,6 +2259,44 @@ function addMessage(text, sender) {
     div.textContent = text;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+}
+function getMisarTechShareLink() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('section', 'misar-tech');
+    return url.protocol === 'file:' ? `${url.pathname.split('/').pop()}${url.search}` : url.href;
+}
+async function copyMisarTechLink() {
+    const link = getMisarTechShareLink();
+    try {
+        await navigator.clipboard.writeText(link);
+        showToast('تم نسخ رابط قسم MISAR TECH', 'success');
+        return;
+    } catch (error) {
+        console.warn('تعذر استخدام الحافظة مباشرة، ستتم تجربة النسخ البديل:', error);
+    }
+
+    const field = document.createElement('textarea');
+    field.value = link;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (error) {
+        console.error('تعذر نسخ رابط MISAR TECH:', error);
+    } finally {
+        field.remove();
+    }
+    if (copied) {
+        showToast('تم نسخ رابط قسم MISAR TECH', 'success');
+    } else {
+        showToast('تعذر نسخ الرابط تلقائياً. انسخ هذا الرابط يدوياً: ' + link, 'error');
+    }
 }
 function getBotResponse(msg) {
     const m = msg.toLowerCase();
@@ -2143,18 +2327,58 @@ function showSecurityModal() {
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) modal.classList.remove('active');
+    if (modalId === 'changePasswordModal') {
+        ['oldPassword', 'newPassword', 'confirmNewPassword'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+    }
 }
-function changePassword() {
+let changingPassword = false;
+async function changePassword() {
+    if (changingPassword) return;
     const oldPass = document.getElementById('oldPassword');
     const newPass = document.getElementById('newPassword');
     const confirmPass = document.getElementById('confirmNewPassword');
-    if (!oldPass || !newPass || !confirmPass) { showToast('يرجى ملء جميع الحقول', 'warning'); return; }
+    if (!appState.user) { showToast('يجب تسجيل الدخول أولاً', 'warning'); return; }
+    if (!oldPass || !newPass || !confirmPass) { showToast('نموذج تغيير كلمة المرور غير متوفر', 'error'); return; }
+    if (!oldPass.value || !newPass.value || !confirmPass.value) { showToast('يرجى ملء جميع الحقول', 'warning'); return; }
     if (newPass.value !== confirmPass.value) { showToast('كلمة المرور الجديدة غير متطابقة', 'error'); return; }
-    showToast('تم تغيير كلمة المرور (وهمي)', 'success');
-    closeModal('changePasswordModal');
-    oldPass.value = '';
-    newPass.value = '';
-    confirmPass.value = '';
+    if (newPass.value.length < 8) { showToast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل', 'warning'); return; }
+    if (newPass.value === oldPass.value) { showToast('اختر كلمة مرور جديدة مختلفة عن الحالية', 'warning'); return; }
+    if (!appState.user.email) {
+        showToast('لا يوجد بريد إلكتروني للحساب للتحقق من كلمة المرور الحالية', 'error');
+        return;
+    }
+
+    const submitButton = document.querySelector('#changePasswordModal .login-btn');
+    const originalButtonHtml = submitButton?.innerHTML;
+    changingPassword = true;
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التغيير...';
+    }
+    try {
+        const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
+            email: appState.user.email,
+            password: oldPass.value
+        });
+        if (verifyError) throw new Error('كلمة المرور الحالية غير صحيحة');
+
+        const { error } = await supabaseClient.auth.updateUser({ password: newPass.value });
+        if (error) throw error;
+        closeModal('changePasswordModal');
+        showToast('تم تغيير كلمة المرور بنجاح', 'success');
+    } catch (error) {
+        console.error('فشل تغيير كلمة المرور:', error);
+        showToast(error.message || 'تعذر تغيير كلمة المرور', 'error');
+    } finally {
+        changingPassword = false;
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
 }
 function saveSecuritySettings() {
     const twoFactor = document.getElementById('twoFactorCheck');
@@ -2519,21 +2743,55 @@ async function getAllActivityLogs() {
 
 // ----- الإشعارات الجماعية -----
 async function sendBulkNotification(recipientType, title, message, specificEmail = null) {
+    if (!recipientType) {
+        recipientType = document.getElementById('notificationRecipients')?.value || 'all';
+        title = document.getElementById('notificationTitle')?.value.trim() || '';
+        message = document.getElementById('notificationMessage')?.value.trim() || '';
+        specificEmail = document.getElementById('specificUserEmail')?.value.trim() || null;
+    }
+    if (!title || !message) {
+        showToast('اكتب عنوان الإشعار ونصه أولاً.', 'warning');
+        return 0;
+    }
+    let pushResult = null;
+    let pushError = null;
+    try {
+        const { data, error } = await supabaseClient.functions.invoke('misar-push-order', {
+            body: {
+                action: 'send_announcement',
+                recipient_type: recipientType,
+                specific_email: specificEmail,
+                title,
+                message
+            }
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        pushResult = data;
+    } catch (error) {
+        pushError = error;
+        console.error('تعذر إرسال إعلان Push:', error);
+    }
     let userIds = [];
     if (recipientType === 'all') {
-        const { data } = await supabaseClient.from('user_data').select('id');
+        const { data, error } = await supabaseClient.from('user_data').select('id');
+        if (error) throw error;
         userIds = data?.map(u => u.id) || [];
     } else if (recipientType === 'clients') {
-        const { data } = await supabaseClient.from('user_data').select('id').eq('account_type', 'client');
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'client');
+        if (error) throw error;
         userIds = data?.map(u => u.id) || [];
     } else if (recipientType === 'sellers') {
-        const { data } = await supabaseClient.from('user_data').select('id').eq('account_type', 'seller');
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'seller');
+        if (error) throw error;
         userIds = data?.map(u => u.id) || [];
     } else if (recipientType === 'deliveries') {
-        const { data } = await supabaseClient.from('user_data').select('id').eq('account_type', 'delivery');
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'delivery');
+        if (error) throw error;
         userIds = data?.map(u => u.id) || [];
     } else if (recipientType === 'specific' && specificEmail) {
-        const { data } = await supabaseClient.from('user_data').select('id').eq('email', specificEmail);
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('email', specificEmail);
+        if (error) throw error;
         if (data?.length) userIds = [data[0].id];
         else throw new Error('المستخدم غير موجود');
     }
@@ -2541,6 +2799,14 @@ async function sendBulkNotification(recipientType, title, message, specificEmail
         await sendNotification(userId, title, message);
     }
     await logActivity(appState.user.id, 'send_bulk_notification', { recipientType, count: userIds.length });
+    const pushStatus = pushResult
+        ? (pushResult.sent
+            ? ` وإرساله كـ Push إلى ${pushResult.sent} جهاز${pushResult.failed ? `، وفشل الإرسال إلى ${pushResult.failed} جهاز` : ''}`
+            : (pushResult.failed
+                ? `، وتعذر إرسال Push إلى ${pushResult.failed} جهاز`
+                : '، ولا توجد أجهزة مفعّل عليها Push ضمن المستلمين'))
+        : `، لكن تعذر إرسال Push: ${pushError?.message || 'خطأ غير معروف'}`;
+    showToast(`تم إرسال الإشعار داخل التطبيق${pushStatus}.`, pushError ? 'warning' : 'success');
     return userIds.length;
 }
 
@@ -2557,9 +2823,191 @@ async function saveAppSettings(settings) {
     for (const item of settings) {
         await supabaseClient
             .from('app_settings')
-            .upsert({ setting_key: item.setting_key, setting_value: item.setting_value, updated_at: new Date() });
+            .upsert(
+                { setting_key: item.setting_key, setting_value: item.setting_value, updated_at: new Date().toISOString() },
+                { onConflict: 'setting_key' }
+            );
     }
     await logActivity(appState.user.id, 'update_app_settings', { count: settings.length });
+}
+
+// ============================================================
+// مركز التحكم في إشعارات المؤسس (notification_settings)
+// ============================================================
+// الإعدادات تُخزّن في app_settings تحت مفتاح واحد: notification_settings
+// القيم الافتراضية مطابقة لما في FOUNDER_CONTROL_CENTER.sql
+const DEFAULT_NOTIFICATION_SETTINGS = {
+    master_enabled: true,
+    channel: 'whatsapp',
+    founder_whatsapp_number: '',
+    types: {
+        new_client: true, new_seller: true, new_delivery: true,
+        account_verification: true,
+        order_created: true, order_status_changed: true,
+        order_accepted: true, order_rejected: true,
+        order_cancelled: true, return_requested: true,
+        delivery_delayed: false, delivery_problem: false,
+        complaint_new: true,
+        gm_login: false, gm_permissions_changed: true,
+        admin_suspended: true, platform_settings_changed: true,
+        unauthorized_access: false, critical_error: false,
+        notification_failed: true
+    }
+};
+
+async function getNotificationSettings() {
+    const { data, error } = await supabaseClient
+        .from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'notification_settings')
+        .maybeSingle();
+    if (error) {
+        console.warn('getNotificationSettings:', error.message);
+        return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+    }
+    let val = data && data.setting_value ? data.setting_value : null;
+
+    // app_settings.setting_value قد يكون jsonb (يصل ككائن) أو text (يصل كنص JSON).
+    // في حالة text كان الشرط القديم (typeof val !== 'object') يتجاهل الإعدادات المحفوظة
+    // ويُعيد القيم الافتراضية دائماً — لذلك نحلّل النص هنا.
+    if (typeof val === 'string') {
+        const s = val.trim();
+        if (!s) return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+        try {
+            val = JSON.parse(s);
+        } catch (e) {
+            console.warn('getNotificationSettings: setting_value ليس JSON صالحاً');
+            return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+        }
+    }
+
+    if (!val || typeof val !== 'object') {
+        return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+    }
+    // دمج مع الافتراضي حتى لا تضيع المفاتيح الجديدة
+    return {
+        master_enabled: val.master_enabled !== false,
+        channel: typeof val.channel === 'string' ? val.channel : 'whatsapp',
+        founder_whatsapp_number: typeof val.founder_whatsapp_number === 'string' ? val.founder_whatsapp_number : '',
+        types: Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS.types, val.types || {})
+    };
+}
+
+async function saveNotificationSettings(next) {
+    const payload = {
+        master_enabled: next.master_enabled !== false,
+        channel: next.channel || 'whatsapp',
+        founder_whatsapp_number: next.founder_whatsapp_number || '',
+        types: Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS.types, next.types || {})
+    };
+    // required: without onConflict, upsert targets the PK (id) and the existing
+    // setting_key row collides on app_settings_setting_key_key.
+    //
+    // setting_value يُخزّن كنص JSON صريح:
+    //   • يعمل مع العمود من نوع text (نص صالح).
+    //   • ويعمل مع jsonb أيضاً (PostgREST يُحوّل النص إلى jsonb تلقائياً
+    //     لأن نوع الهدف jsonb).
+    // إرساله ككائن مباشرةً كان ينجح مع jsonb لكن قد يُقدّم بصيغة غير متوقعة مع text.
+    const { error } = await supabaseClient
+        .from('app_settings')
+        .upsert(
+            {
+                setting_key: 'notification_settings',
+                setting_value: JSON.stringify(payload),
+                updated_at: new Date().toISOString()
+            },
+            { onConflict: 'setting_key' }
+        );
+    if (error) throw error;
+    await logActivity(appState.user.id, 'update_notification_settings', {
+        master_enabled: payload.master_enabled,
+        disabled_count: Object.keys(payload.types).filter(k => payload.types[k] === false).length
+    });
+    return payload;
+}
+
+// أحدث محاولات إرسال المؤسس (للعرض في اللوحة)
+async function getFounderNotificationLog(limit = 20) {
+    const { data, error } = await supabaseClient
+        .from('founder_notifications')
+        .select('id, event_type, status, error_detail, created_at, sent_at')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) {
+        console.warn('getFounderNotificationLog:', error.message);
+        return [];
+    }
+    return data || [];
+}
+
+// اختبار الربط: ينادي الدالة بمفتاح اختبار (لا يُرسل لمستخدم آخر)
+async function testFounderNotificationLink() {
+    const eventKey = 'link_test:' + Date.now();
+
+    let res;
+    try {
+        res = await supabaseClient.functions.invoke('misar-founder-notify', {
+            body: {
+                // نوع مدعوم في قائمة «الإشعارات المدعومة» بلوحة المؤسس
+                event_type: 'order_status_changed',
+                event_key: eventKey,
+                payload: { order_short: 'TEST', status: 'اختبار الربط من لوحة المؤسس' }
+            }
+        });
+    } catch (e) {
+        // استثناء حقيقي = انقطاع شبكة/CORS قبل وصول الطلب للخادم.
+        // ملاحظة: 404 و 401 لا تُرمى هنا، بل تعود داخل res.error.
+        throw new Error('تعذّر الاتصال بالخادم (شبكة/CORS) أثناء مناداة misar-founder-notify. ' +
+            'التفاصيل: ' + ((e && e.message) || 'شبكة'));
+    }
+
+    const { data, error } = res;
+
+    if (error) {
+        // نستخرج سبب الخادم الحقيقي بدل الرسالة العامة
+        let detail = (error && error.message) || 'خطأ غير معروف';
+        try {
+            const ctx = error.context;
+            if (ctx) {
+                // Response object (Supabase Edge Functions)
+                const status = ctx.status || (ctx.statusCode);
+                if (status) detail = 'HTTP ' + status + ' — ' + detail;
+                if (typeof ctx.clone === 'function') {
+                    const raw = await ctx.clone().text();
+                    if (raw) {
+                        try {
+                            const j = JSON.parse(raw);
+                            detail += ' | ' + (j.error || j.skipped || j.message || raw.slice(0, 200));
+                        } catch (_) { detail += ' | ' + raw.slice(0, 200); }
+                    }
+                }
+            }
+        } catch (_) { /* تجاهل */ }
+
+        // الدالة غير منشورة/غير موجودة — تُكتشف من داخل error وليس من throw
+        if (/\b404\b/.test(detail) || /Failed to send a request to the Edge Function/i.test(detail)) {
+            throw new Error('الدالة misar-founder-notify غير منشورة على Supabase (404). ' +
+                'انشرها من جذر المشروع بالأمر: supabase functions deploy misar-founder-notify ' +
+                '--project-ref wwojtkxwmgkrudtevbcb --use-api | تفاصيل: ' + detail);
+        }
+
+        // رفض من Meta لأسباب التسعير/الرسوم (131042 أو "495 (27%)")
+        if (/131042|\b495\b/.test(detail)) {
+            throw new Error('رفضت Meta إرسال الرسالة لأسباب تتعلق بالرسوم/التسعير (131042). ' +
+                'تحقق من طريقة الدفع في WhatsApp Business، وأن رسالة النص الحر تُرسل خلال 24 ساعة من آخر رسالة للمؤسس. التفاصيل: ' + detail);
+        }
+
+        // ترجمة حالات المصادقة إلى رسالة مفهومة
+        if (/\b401\b/.test(detail)) {
+            throw new Error('رفض الخادم الطلب (401): جلستك غير صالحة أو منتهية. سجّل الخروج ثم الدخول مرة أخرى.');
+        }
+        if (/\b403\b/.test(detail)) {
+            throw new Error('رفض الخادم الطلب (403): هذا الحساب ليس مؤسساً، لا يمكنه إرسال إشعارات المؤسس.');
+        }
+        throw new Error(detail);
+    }
+
+    return data;
 }
 
 // ============================================================
@@ -2603,13 +3051,13 @@ window.showFounderDiagBanner = function (diag) {
         let reason, action;
         if (diag.source.indexOf('فشلت القراءة') !== -1) {
             reason = 'لا يمكن قراءة صفك في جدول user_data (RLS يمنع القراءة أو الجدول غير متاح).';
-            action = 'شغّل سكربت FIX_restore_founder_access.sql في Supabase SQL Editor.';
+            action = 'شغّل سكربت FIX_dashboard_not_hiding_aljylanym.sql في Supabase SQL Editor (يُصلح RLS والحماية).';
         } else if (diag.source.indexOf('الصف غير موجود') !== -1) {
             reason = 'صفك غير موجود أصلاً في جدول user_data.';
-            action = 'شغّل FIX_sa3d_founder_now.sql لإنشاء الصف بدور founder.';
+            action = 'شغّل FIX_dashboard_not_hiding_aljylanym.sql لإنشاء الصف بالدور الصحيح.';
         } else {
-            reason = 'صفك موجود لكن account_type = "' + (diag.account_type || 'غير محدد') + '" وليس founder.';
-            action = 'شغّل: UPDATE public.user_data SET account_type = \'founder\', status = \'approved\' WHERE lower(email) = \'sa3dgelany@gmail.com\';';
+            reason = 'صفك موجود لكن account_type = "' + (diag.account_type || 'غير محدد') + '" / status = "' + (diag.status || 'غير محدد') + '" وليس دوراً له لوحة (seller/delivery/founder).';
+            action = 'شغّل الملف: FIX_dashboard_not_hiding_aljylanym.sql في Supabase SQL Editor.';
         }
 
         const box = document.createElement('div');
@@ -2644,7 +3092,9 @@ window.closeModal = closeModal;
 window.changePassword = changePassword;
 window.saveSecuritySettings = saveSecuritySettings;
 window.openChatbot = openChatbot;
+window.openMisarTechChat = openMisarTechChat;
 window.closeChatbot = closeChatbot;
+window.copyMisarTechLink = copyMisarTechLink;
 window.sendMessage = sendMessage;
 window.sendSuggestion = sendSuggestion;
 window.openFounderProfile = openFounderProfile;
@@ -2716,3 +3166,7 @@ window.getAllActivityLogs = getAllActivityLogs;
 window.sendBulkNotification = sendBulkNotification;
 window.getAppSettings = getAppSettings;
 window.saveAppSettings = saveAppSettings;
+window.getNotificationSettings = getNotificationSettings;
+window.saveNotificationSettings = saveNotificationSettings;
+window.getFounderNotificationLog = getFounderNotificationLog;
+window.testFounderNotificationLink = testFounderNotificationLink;

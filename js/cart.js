@@ -342,6 +342,9 @@ async function createOrder(productId, quantity, totalPrice, sellerId, customerNa
     if (data) {
         console.log(`✅ [createOrder] Order created with ID: ${data.id}`);
         await sendNotification(sellerId, 'طلب جديد', `لديك طلب جديد من ${customerName}`, { order_id: data.id });
+        if (sellerId && typeof notifySellerPushOrder === 'function') {
+            notifySellerPushOrder(data.id);
+        }
         // يُستدعى فقط بعد نجاح حفظ الطلب فعلياً في قاعدة البيانات
         notifySellerWhatsApp(data.id);
     }
@@ -875,17 +878,17 @@ async function updateOrderStatus(orderId, status, extraData = {}) {
     const { data, error } = await supabaseClient.from('orders').update(updates).eq('id', orderId).select().maybeSingle();
     if (error) { console.error('❌ [updateOrderStatus] Error:', error); throw error; }
     console.log('✅ [updateOrderStatus] Result:', data);
+    const pushEvents = {
+        confirmed: ['order_confirmed'],
+        prepared: ['order_prepared', 'courier_order_ready'],
+        cancelled: ['order_cancelled']
+    }[status] || [];
+    if (data && typeof notifyOrderPushEvent === 'function') {
+        for (const event of pushEvents) {
+            notifyOrderPushEvent(data.id, event);
+        }
+    }
     return data;
-}
-
-async function notifyDeliveryPersonsInCenter(center, orderId, title, message) {
-    try {
-        const { data: deliveryUsers, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'delivery').eq('center', center).eq('status', 'approved');
-        if (error) throw error;
-        if (!deliveryUsers || deliveryUsers.length === 0) return;
-        for (const delivery of deliveryUsers) await sendNotification(delivery.id, title, message, { order_id: orderId });
-        console.log(`تم إرسال إشعار لـ ${deliveryUsers.length} مندوب في مركز ${center}`);
-    } catch (err) { console.warn('فشل إرسال إشعارات للمناديب', err); }
 }
 
 // ===================== دوال المناديب =====================
@@ -1118,6 +1121,9 @@ async function claimOrder(orderId) {
             `المندوب ${deliveryPerson.name || ''} استلم طلبك #${orderId.slice(0,8)}`);
         await sendNotification(updatedOrder.seller_id, 'تم استلام الطلب بواسطة مندوب',
             `المندوب ${deliveryPerson.name || ''} استلم طلب #${orderId.slice(0,8)}`);
+        if (typeof notifyOrderPushEvent === 'function') {
+            notifyOrderPushEvent(updatedOrder.id, 'order_picked_up');
+        }
 
         showToast('تم استلام الطلب بنجاح', 'success');
         await refreshDeliveryDashboard();
@@ -1224,6 +1230,9 @@ async function startDelivery(orderId) {
             `طلبك #${orderId.slice(0,8)} في طريقه إليك. رمز التأكيد: ${otp}`);
         await sendNotification(order.seller_id, 'بدأ التوصيل',
             `طلب #${orderId.slice(0,8)} بدأ توصيله بواسطة المندوب`);
+        if (typeof notifyOrderPushEvent === 'function') {
+            notifyOrderPushEvent(order.id, 'order_in_delivery');
+        }
 
         showToast('تم بدء التوصيل وتم إرسال OTP للعميل', 'success');
         await refreshDeliveryDashboard();
@@ -1314,6 +1323,9 @@ async function completeDelivery(orderId, otpEntered) {
                 `طلبك #${orderId.slice(0,8)} تم توصيله بنجاح`);
             await sendNotification(updatedOrder.seller_id, 'تم توصيل الطلب',
                 `طلب #${orderId.slice(0,8)} تم توصيله بواسطة المندوب`);
+            if (typeof notifyOrderPushEvent === 'function') {
+                notifyOrderPushEvent(updatedOrder.id, 'order_delivered');
+            }
             notifySellerWhatsApp(orderId, 'order_delivered');
 
             showToast('تم تأكيد التوصيل بنجاح', 'success');
@@ -1615,7 +1627,6 @@ window.generateTimeline = generateTimeline;
 window.loadBuyerOrdersWithTimeline = loadBuyerOrdersWithTimeline;
 window.loadSellerOrders = loadSellerOrders;
 window.updateOrderStatus = updateOrderStatus;
-window.notifyDeliveryPersonsInCenter = notifyDeliveryPersonsInCenter;
 window.loadAvailableOrders = loadAvailableOrders;
 window.loadMyDeliveryOrders = loadMyDeliveryOrders;
 window.claimOrder = claimOrder;

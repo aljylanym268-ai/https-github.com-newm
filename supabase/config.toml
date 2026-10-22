@@ -4,3 +4,42 @@ project_id = "wwojtkxwmgkrudtevbcb"
 # Meta لا ترسل Authorization header عند التحقق من الـ Webhook (GET)
 # ولا عند إرسال إشعارات الرسائل (POST) => يجب تعطيل تحقق JWT على البوابة.
 verify_jwt = false
+
+[functions.misar-ai-chat]
+# Webhook واتساب للمساعد الذكي — Meta لا ترسل JWT.
+verify_jwt = false
+enabled = true
+import_map = "./functions/misar-ai-chat/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/misar-ai-chat/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/misar-ai-chat/*.html" ]
+
+[functions.misar-founder-notify]
+# يُنادى من لوحة المؤسس بهوية المستخدم المسجل، ومن أي تكامل خادمي.
+# verify_jwt = true (الافتراضي): البوابة ترفض أي رمز غير صالح قبل تنفيذ الكود،
+# والدالة تتحقق إضافياً من أن صاحب الرمز مؤسس (misar_is_founder).
+# لا تُغيّر هذه القيمة إلى false: ذلك يفتح الباب لأي طلب بلا هوية.
+enabled = true
+import_map = "./functions/misar-founder-notify/deno.json"
+entrypoint = "./functions/misar-founder-notify/index.ts"
+
+[functions.misar-push-order]
+# يتم التحقق من JWT في البوابة، وتتحقق الدالة من دور المستخدم وملكية الطلب أو صلاحية المؤسس.
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/misar-push-order/index.ts"
+
+[functions.misar-daily-report]
+enabled = true
+# This scheduled endpoint authenticates every request with the required x-cron-secret header.
+verify_jwt = false
+import_map = "./functions/misar-daily-report/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/misar-daily-report/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/misar-daily-report/*.html" ]

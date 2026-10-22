@@ -4,7 +4,7 @@
 // - يخزن الملفات الأساسية مؤقتاً ليعمل التطبيق بدون إنترنت جزئياً
 // ============================================================
 
-const CACHE_NAME = 'misar-cache-v3';
+const CACHE_NAME = 'misar-cache-v7';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,10 +12,12 @@ const APP_SHELL = [
   './banners.css',
   './manifest.json',
   './js/supabase.js',
+  './js/push-notifications.js',
   './js/products.js',
   './js/product.js',
   './js/cart.js',
   './js/banners.js',
+  './js/misar-tech.js',
   './js/admin-dashboard.js'
 ];
 
@@ -92,7 +94,16 @@ self.addEventListener('push', (event) => {
 // ========== عند النقر على الإشعار ==========
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data && event.notification.data.url ? event.notification.data.url : './index.html';
+  let url = './index.html';
+  try {
+    const requestedUrl = event.notification.data?.url;
+    if (requestedUrl) {
+      const parsedUrl = new URL(requestedUrl, self.location.href);
+      if (parsedUrl.origin === self.location.origin) url = parsedUrl.href;
+    }
+  } catch (error) {
+    console.warn('رابط إشعار غير صالح:', error);
+  }
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
@@ -112,10 +123,15 @@ self.addEventListener('notificationclick', (event) => {
 // ========== إدارة الاشتراكات في الضغط ==========
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      clients.forEach((client) => {
-        client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' });
-      });
-    })
+    self.registration.pushManager.getSubscription()
+      .then((subscription) => self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({
+              type: 'PUSH_SUBSCRIPTION_CHANGED',
+              subscription: subscription?.toJSON() || null
+            });
+          });
+        }))
   );
 });

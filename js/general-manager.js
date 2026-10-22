@@ -15,6 +15,7 @@
 const MISAR_GM_SECTIONS = [
     { key: 'dashboard', label: 'نظرة عامة', icon: 'fas fa-chart-pie', actions: ['view'] },
     { key: 'orders', label: 'الطلبات', icon: 'fas fa-shopping-cart', actions: ['view', 'create', 'edit', 'delete'] },
+    { key: 'misar_tech', label: 'طلبات MISAR TECH', icon: 'fas fa-code', actions: ['view', 'edit'] },
     { key: 'products', label: 'المنتجات', icon: 'fas fa-boxes', actions: ['view', 'create', 'edit', 'delete'] },
     { key: 'services', label: 'الخدمات', icon: 'fas fa-concierge-bell', actions: ['view', 'create', 'edit', 'delete'] },
     { key: 'users', label: 'المستخدمون', icon: 'fas fa-users', actions: ['view', 'edit'] },
@@ -35,6 +36,7 @@ const MISAR_GM_ACTION_LABELS = { view: 'عرض', create: 'إنشاء', edit: 'ت
 const MISAR_GM_DEFAULT_PERMS = {
     dashboard: { view: true },
     orders: { view: true, create: false, edit: false, delete: false },
+    misar_tech: { view: true, edit: false },
     products: { view: true, create: false, edit: false, delete: false },
     services: { view: true, create: false, edit: false, delete: false },
     users: { view: true, edit: false },
@@ -669,7 +671,7 @@ function misarRenderGmList() {
             </td>
             <td class="gm-actions-cell">
                 <button class="founder-btn" style="width:auto;padding:6px 12px;" onclick="onGmSelectForPerms('${gm.id}')"><i class="fas fa-key"></i> الصلاحيات</button>
-                <button class="google-btn" style="width:auto;padding:6px 12px;" onclick="onGmRename('${gm.id}')"><i class="fas fa-tag"></i> تسمية</button>
+                <button class="google-btn" style="width:auto;padding:6px 12px;" onclick="onGmRename('${gm.id}')"><i class="fas fa-tag"></i> الاسم الظاهر</button>
                 <button class="google-btn" style="width:auto;padding:6px 12px;" onclick="onGmViewActivity('${gm.id}')"><i class="fas fa-history"></i> النشاط</button>
                 <button class="google-btn" style="width:auto;padding:6px 12px;" onclick="onGmChangeRole('${gm.id}')"><i class="fas fa-user-tag"></i> تغيير الدور</button>
                 <button class="remove-btn" style="width:auto;padding:6px 12px;" onclick="onGmRevoke('${gm.id}')"><i class="fas fa-user-minus"></i> إلغاء التعيين</button>
@@ -678,24 +680,18 @@ function misarRenderGmList() {
     }).join('');
 }
 
-// تعديل تسمية ودور مدير (نافذة مؤسس)
+// تعديل المسمى الذي يظهر بجانب اسم المدير في واجهة الحساب
 window.onGmRename = async function (userId) {
     if (!misarIsFounder()) return showToast('صلاحية المؤسس فقط', 'error');
     const list = window.misarGmState.gmList || [];
     const gm = list.find(g => g.id === userId);
     const prof = misarGmProfile(userId);
     const current = prof.label || '';
-    const newLabel = prompt('اكتب التسمية للمدير (مثال: مشرف المنتجات، إداري الطلبات...):', current);
+    const newLabel = prompt('اكتب المسمى الذي سيظهر بجانب اسم المدير وبدلاً من «لوحة المدير العام» (مثال: مشرف، مدير إدارة، إدارة التشغيل). ستظهر عبارة «لوحة» قبله تلقائياً. اتركه فارغاً لإعادة الاسم الافتراضي:', current);
     if (newLabel === null) return;
-    const roleKeys = MISAR_GM_ROLE_TYPES.map(r => r.key).join(' / ');
-    const newRole = prompt('نوع الدور: ' + roleKeys, prof.role || 'general_manager');
-    if (newRole === null) return;
-    if (!MISAR_GM_ROLE_TYPES.some(r => r.key === newRole.trim())) {
-        return showToast('نوع الدور غير صالح.', 'error');
-    }
     showLoading(true);
     try {
-        await misarSetGmProfileFor(userId, { label: newLabel, role: newRole.trim() });
+        await misarSetGmProfileFor(userId, { label: newLabel });
         showToast(`تم حفظ التسمية لـ ${(gm && gm.name) || 'المدير'}`, 'success');
         await misarRenderGmAdminPanel();
     } catch (err) { showToast(err.message, 'error'); } finally { showLoading(false); }
@@ -853,6 +849,7 @@ window.misarSwitchGmTab = async function (tabId) {
         switch (tabId) {
             case 'dashboard': await misarRenderGmStats(); break;
             case 'orders': if (typeof loadOrdersTableAdmin === 'function') await loadOrdersTableAdmin(); break;
+            case 'misar_tech': if (typeof loadMisarTechRequests === 'function') await loadMisarTechRequests(); break;
             case 'products': if (typeof loadProductsTableAdmin === 'function') await loadProductsTableAdmin(); break;
             case 'services': if (typeof loadServicesTableAdmin === 'function') await loadServicesTableAdmin(); break;
             case 'users': if (typeof loadCustomersTable === 'function') await loadCustomersTable(); break;

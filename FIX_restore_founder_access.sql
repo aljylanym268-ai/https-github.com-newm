@@ -17,8 +17,8 @@
 BEGIN;
 
 -- ============================================================
--- 1) إعادة دالة المؤسس/المدير للتوافق الكامل مع النظام القديم
---    - تشمل 'admin' القديم (توافق خلفي) + 'general_manager' النشط
+-- 1) إعادة دالة المؤسس/legacy admin للتوافق الكامل مع النظام القديم
+--    - تشمل 'admin' القديم (توافق خلفي)، ولا تمنح المدير العام وصولاً شاملاً
 --    - لا تعتمد على status للمؤسس (المؤسس لا يُوقَف).
 --    - SECURITY DEFINER لمنع أي دورية RLS.
 -- ============================================================
@@ -72,8 +72,7 @@ AS $$
     SELECT 1 FROM public.user_data u
     WHERE u.id = (select auth.uid())
       AND u.account_type IN ('founder', 'admin')
-  )
-  OR public.misar_is_general_manager();
+  );
 $$;
 
 -- ============================================================
@@ -160,13 +159,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- منع التصعيد فقط: أي غير مؤسس لا يرقّي حساباً إلى founder.
+  -- لا يُسمح لغير المؤسس بتغيير الدور أو حالة الاعتماد.
   IF (public.misar_is_founder() IS NOT TRUE) THEN
-    IF (TG_OP = 'INSERT' AND NEW.account_type = 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: إنشاء حساب مؤسس يتطلب صلاحية المؤسس.';
+    IF TG_OP = 'INSERT' AND NEW.account_type IN ('founder', 'general_manager', 'admin') THEN
+      RAISE EXCEPTION 'غير مسموح: تعيين دور مميز يتطلب صلاحية المؤسس.';
     END IF;
-    IF (TG_OP = 'UPDATE' AND NEW.account_type = 'founder' AND OLD.account_type <> 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: ترقية حساب إلى مؤسس.';
+    IF TG_OP = 'UPDATE' AND NEW.account_type IS DISTINCT FROM OLD.account_type THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير دور الحساب يتطلب صلاحية المؤسس.';
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير حالة الاعتماد يتطلب صلاحية المؤسس.';
     END IF;
   END IF;
 

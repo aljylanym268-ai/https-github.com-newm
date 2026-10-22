@@ -98,8 +98,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT public.misar_is_founder()
-      OR public.misar_is_general_manager();
+  SELECT public.misar_is_founder();
 $$;
 
 -- (ب) --- سياسات قراءة/كتابة user_data للمؤسس ---------------
@@ -141,13 +140,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- منع التصعيد فقط: غير المؤسس لا يرقّي حساباً إلى founder.
+  -- Only the founder may change account roles or approval status.
   IF (public.misar_is_founder() IS NOT TRUE) THEN
-    IF (TG_OP = 'INSERT' AND NEW.account_type = 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: إنشاء حساب مؤسس يتطلب صلاحية المؤسس.';
+    IF TG_OP = 'INSERT' AND NEW.account_type IN ('founder', 'general_manager', 'admin') THEN
+      RAISE EXCEPTION 'غير مسموح: تعيين دور مميز يتطلب صلاحية المؤسس.';
     END IF;
-    IF (TG_OP = 'UPDATE' AND NEW.account_type = 'founder' AND OLD.account_type <> 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: ترقية حساب إلى مؤسس.';
+    IF TG_OP = 'UPDATE' AND NEW.account_type IS DISTINCT FROM OLD.account_type THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير دور الحساب يتطلب صلاحية المؤسس.';
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير حالة الاعتماد يتطلب صلاحية المؤسس.';
     END IF;
   END IF;
 

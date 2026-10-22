@@ -106,7 +106,7 @@ AS $$
     );
 $$;
 
--- (هـ) توافق خلفي: تشمل المؤسس + 'admin' القديم + المدير العام النشط.
+-- (هـ) توافق خلفي للمؤسس + 'admin' القديم فقط؛ صلاحيات المدير تُفحص منفصلة.
 --     مهم: لو حذفنا 'admin' تفقد كل سياسات RLS المبنية على هذه الدالة
 --     وصول المؤسس إلى صفوف user_data فيختفي كل المستخدمين من اللوحة.
 CREATE OR REPLACE FUNCTION public.misar_is_founder_or_admin()
@@ -120,8 +120,7 @@ AS $$
     SELECT 1 FROM public.user_data u
     WHERE u.id = (select auth.uid())
       AND u.account_type IN ('founder', 'admin')
-  )
-  OR public.misar_is_general_manager();
+  );
 $$;
 
 -- ============================================================
@@ -145,18 +144,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- منع التصعيد فقط: أي غير مؤسس لا يرقّي حساباً إلى founder.
-  -- (لا نمنع المؤسس من تعديل صفوفه؛ وإلا تتعطل إدارة الحسابات.)
+  -- Only the founder may change account roles or approval status.
   IF (public.misar_is_founder() IS NOT TRUE) THEN
-
-    -- (1) لا إنشاء مؤسس
-    IF (TG_OP = 'INSERT' AND NEW.account_type = 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: إنشاء حساب مؤسس يتطلب صلاحية المؤسس.';
+    IF TG_OP = 'INSERT' AND NEW.account_type IN ('founder', 'general_manager', 'admin') THEN
+      RAISE EXCEPTION 'غير مسموح: تعيين دور مميز يتطلب صلاحية المؤسس.';
     END IF;
-
-    -- (2) لا ترقية أي حساب إلى مؤسس
-    IF (TG_OP = 'UPDATE' AND NEW.account_type = 'founder' AND OLD.account_type <> 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: ترقية حساب إلى مؤسس.';
+    IF TG_OP = 'UPDATE' AND NEW.account_type IS DISTINCT FROM OLD.account_type THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير دور الحساب يتطلب صلاحية المؤسس.';
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير حالة الاعتماد يتطلب صلاحية المؤسس.';
     END IF;
 
   END IF;
@@ -177,7 +174,7 @@ CREATE TRIGGER misar_protect_founder_trigger
 -- 3) سياسات RLS لـ user_data (المدير العام)
 --    - المدير العام يقرأ المستخدمين فقط إذا كان يملك صلاحية users.view
 --    - المدير العام يعدّل المستخدمين فقط إذا كان يملك users.edit
---    - السياسات الحالية للمؤسس تبقى، والسياسات الجديدة additive.
+--    - صلاحيات المؤسس تبقى مستقلة؛ صلاحيات المدير تُفحص بالسياسات المحددة أدناه.
 -- ============================================================
 
 ALTER TABLE public.user_data ENABLE ROW LEVEL SECURITY;
@@ -215,11 +212,13 @@ USING (
   public.misar_gm_can('users', 'edit')
   AND account_type <> 'founder'          -- لا يلمس المؤسس أبداً
   AND account_type <> 'general_manager'  -- ولا يعدّل مدراء آخرين
+  AND account_type <> 'admin'
 )
 WITH CHECK (
   public.misar_gm_can('users', 'edit')
   AND account_type <> 'founder'
   AND account_type <> 'general_manager'
+  AND account_type <> 'admin'
 );
 
 -- ============================================================

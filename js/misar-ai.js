@@ -77,6 +77,13 @@ const MISAR_SYSTEM_PROMPT = `أنت MISAR AI، المساعد الذكي الر�
 الاسم: MISAR AI
 الوصف: مساعدك الذكي داخل MISAR SYSTEMS.`;
 
+const MISAR_TECH_SYSTEM_PROMPT = `أنت الآن تساعد العميل في قسم MISAR TECH.
+الخدمات المتاحة: تصميم وتطوير المواقع، إنشاء المتاجر والمنصات الإلكترونية، تطبيقات Android وiOS، أنظمة إدارة الأعمال مثل نقاط البيع والمخازن والفواتير، وحلول الذكاء الاصطناعي والأتمتة.
+ساعد العميل على تحديد الخدمة المناسبة، واسأله أسئلة توضيحية قصيرة عن الفكرة والخصائص المطلوبة عند الحاجة.
+لا تخترع أسعاراً أو مواعيد تسليم أو ضمانات؛ وضّح أن التفاصيل تُحدد بعد مراجعة الطلب.
+لا تدّع إنشاء مشروع أو إرسال طلب نيابة عن العميل. وجّهه إلى زر "اطلب مشروعك الآن" لإرسال الطلب من النموذج الرسمي.
+لا تطلب بيانات دفع أو كلمات مرور في المحادثة، واجعل ردودك بالعربية وبأسلوب واضح ومختصر.`;
+
 // ========== إدارة مفتاح الـ API ==========
 function setMisarApiKey(key) {
     if (!key) return;
@@ -273,7 +280,7 @@ async function askMisarAIEdge(messages, opts = {}) {
 }
 
 // ========== نقطة الدخول: رد المساعد ==========
-async function getMisarAiResponse(msg) {
+async function getMisarAiResponse(msg, options = {}) {
     // 0) دعم إدخال مفتاح OpenAI مباشرة من الشات (يخزنه المستخدم)
     const keyMatch = String(msg).match(/(?:sk-[A-Za-z0-9_\-]{20,}|AQ\.[A-Za-z0-9_\-]{20,})/);
     if (keyMatch) {
@@ -281,7 +288,8 @@ async function getMisarAiResponse(msg) {
         return '✅ تم حفظ المفتاح بنجاح!\nأنا الآن MISAR AI الذكي، اسألني عن أي شيء: المنتجات، طلباتك، الخدمات… 😊';
     }
 
-    const founder = isMisarFounder();
+    const misarTechMode = options.misarTech === true || window.misarTechChatMode === true;
+    const founder = !misarTechMode && isMisarFounder();
 
     // السياق: سياق المنصة الكامل لوضع المؤس، وإلا سياق المستخدم العادي
     let context = '';
@@ -295,7 +303,8 @@ async function getMisarAiResponse(msg) {
     }
 
     try {
-        const systemPrompt = founder ? MISAR_FOUNDER_SYSTEM_PROMPT : MISAR_SYSTEM_PROMPT;
+        const systemPrompt = founder ? MISAR_FOUNDER_SYSTEM_PROMPT :
+            MISAR_SYSTEM_PROMPT + (misarTechMode ? '\n\n' + MISAR_TECH_SYSTEM_PROMPT : '');
         const contextLabel = founder ? 'بيانات المنصة الحالية' : 'بيانات النظام الحالية';
         const messages = [
             { role: 'system', content: systemPrompt + `\n\n${contextLabel} (استخدمها فقط ولا تخترع غيرها):\n` + context },
@@ -337,6 +346,10 @@ async function getMisarAiResponse(msg) {
         const localSearch = await tryLocalProductAnswer(msg);
         if (localSearch) return localSearch;
     } catch (e) { console.warn('MISAR AI local search:', e); }
+
+    if (misarTechMode) {
+        return 'المساعد الذكي غير متاح مؤقتاً، لكن خدمات MISAR TECH تشمل تصميم المواقع، المتاجر والمنصات، تطبيقات الموبايل، أنظمة إدارة الأعمال، وحلول الذكاء الاصطناعي والأتمتة. الأسعار ومدة التنفيذ تُحدد بعد مراجعة تفاصيل مشروعك؛ أرسلها من زر «اطلب مشروعك الآن».';
+    }
 
     // 6) الردود الثابتة كحل أخير
     return getSmartLocalReply(String(msg).toLowerCase());

@@ -642,6 +642,20 @@ body {
     font-weight: 900;
     text-shadow: 0 0 20px var(--gold-shadow);
 }
+.gm-public-label {
+    display: inline-block;
+    margin-inline-start: 8px;
+    padding: 3px 9px;
+    border: 1px solid rgba(212,175,55,0.7);
+    border-radius: 999px;
+    background: rgba(212,175,55,0.16);
+    color: var(--gold);
+    font-size: 0.68em;
+    font-weight: 800;
+    line-height: 1.5;
+    vertical-align: middle;
+    text-shadow: none;
+}
 .welcome-text p { opacity: 0.9; font-size: 0.9rem; }
 .user-avatar {
     width: 55px; height: 55px;
@@ -1970,6 +1984,7 @@ body {
     touch-action: manipulation;
 }
 .profile-name { font-size: 1.4rem; font-weight: 900; text-shadow: 0 0 20px var(--gold-shadow); }
+.profile-name .gm-public-label { font-size: 0.58em; }
 .profile-email { opacity: 0.9; font-size: 0.95rem; }
 .profile-location { margin-top: 5px; font-size: 0.85rem; opacity: 0.8; }
 .profile-stats {
@@ -2353,6 +2368,487 @@ body {
     border: 3px solid var(--gold);
     box-shadow: 0 30px 60px rgba(0,0,0,0.6);
 }
+.mt-form-modal {
+    padding: 16px;
+}
+.mt-form-modal .mt-form-card {
+    width: min(100%, 520px);
+    max-height: min(88vh, 800px);
+    max-height: min(88dvh, 800px);
+    display: flex;
+    flex-direction: column;
+    padding: 22px;
+    border-radius: 22px;
+    color: var(--brown-dark);
+    direction: rtl;
+    text-align: right;
+    overflow: hidden;
+}
+.mt-form-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(212,175,55,0.45);
+}
+.mt-form-title {
+    margin: 0;
+    color: var(--blue-royal);
+    font-size: 1.2rem;
+    font-weight: 900;
+}
+.mt-form-title i {
+    margin-left: 6px;
+    color: var(--gold-dark);
+}
+.mt-form-fields {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold) transparent;
+}
+.mt-form-close {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border: 1px solid rgba(26,35,126,0.15);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--blue-royal);
+    cursor: pointer;
+}
+.mt-form-close:hover {
+    background: var(--blue-royal);
+    color: #fff;
+}
+.mt-form-group {
+    margin-bottom: 14px;
+}
+.mt-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--brown-dark);
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+.mt-form-group input,
+.mt-form-group select,
+.mt-form-group textarea {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid rgba(26,35,126,0.18);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--brown-dark);
+    font: inherit;
+    font-size: 0.95rem;
+    text-align: right;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.mt-form-group textarea {
+    min-height: 96px;
+    resize: vertical;
+}
+.mt-form-group input::placeholder,
+.mt-form-group textarea::placeholder {
+    color: #8b8790;
+    opacity: 1;
+}
+.mt-form-group input:focus,
+.mt-form-group select:focus,
+.mt-form-group textarea:focus {
+    outline: none;
+    border-color: var(--gold-dark);
+    box-shadow: 0 0 0 3px rgba(212,175,55,0.2);
+}
+.mt-form-group input:disabled,
+.mt-form-group select:disabled,
+.mt-form-group textarea:disabled {
+    border-color: rgba(26,35,126,0.1);
+    background: var(--sand-dark);
+    color: var(--brown-mid);
+    cursor: not-allowed;
+}
+#mtFormError,
+#mtFormSuccess {
+    display: none;
+    margin-bottom: 14px;
+    padding: 11px 13px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+#mtFormError {
+    background: #fdecea;
+    color: #b71c1c;
+}
+#mtFormSuccess {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+.mt-form-submit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 48px;
+    margin-top: 4px;
+    border: 0;
+    border-radius: 12px;
+    background: linear-gradient(145deg, var(--gold), var(--gold-dark));
+    color: var(--blue-royal);
+    font-size: 1rem;
+    font-weight: 900;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: var(--shadow-gold);
+    transition: var(--transition);
+}
+.mt-form-submit:hover {
+    transform: translateY(-2px);
+}
+.mt-form-submit:active {
+    transform: scale(0.98);
+}
+.mt-form-submit:disabled {
+    cursor: wait;
+    opacity: 0.75;
+    transform: none;
+}
+
+/* هوية MISAR TECH */
+#misarTechScreen .products-section {
+    padding: 24px 5% 30px;
+    margin-bottom: 0;
+    border-top: 2px solid var(--gold);
+    border-bottom: 2px solid var(--gold);
+    background: linear-gradient(145deg, var(--blue-royal), var(--blue-dark));
+}
+#misarTechScreen .section-title {
+    color: var(--gold);
+}
+#misarTechScreen > .products-section > .category-desc {
+    color: var(--text-light);
+}
+#misarTechScreen .categories-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 14px;
+}
+#misarTechScreen .category-card {
+    background: var(--sand);
+    border-color: var(--gold);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.16);
+}
+#misarTechScreen .category-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22);
+}
+#misarTechScreen .category-title {
+    color: var(--blue-royal);
+}
+#misarTechScreen .category-desc {
+    color: var(--brown-mid);
+}
+#misarTechScreen .btn-primary {
+    min-height: 48px;
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-btn);
+    background: linear-gradient(145deg, var(--gold), var(--gold-dark));
+    color: var(--blue-royal);
+    font: inherit;
+    font-weight: 900;
+    box-shadow: var(--shadow-gold);
+}
+#misarTechScreen .btn-primary:hover {
+    filter: brightness(1.04);
+}
+#misarTechScreen .mt-contact-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+#misarTechScreen .mt-contact-actions button {
+    min-width: 0;
+    min-height: 46px;
+    padding: 9px 12px;
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-btn);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    transition: var(--transition);
+}
+#misarTechScreen .mt-contact-actions button:hover {
+    transform: translateY(-2px);
+}
+#misarTechScreen .mt-ai-button {
+    background: linear-gradient(145deg, var(--blue-royal), var(--blue-dark));
+    color: var(--gold);
+    box-shadow: 0 6px 16px rgba(13,20,69,0.22);
+}
+#misarTechScreen .mt-share-button {
+    background: var(--sand);
+    color: var(--blue-royal);
+    box-shadow: var(--shadow-gold);
+}
+
+/* لوحة طلبات MISAR TECH */
+#tab-misar-tech .founder-toolbar,
+#gm-tab-misar_tech .founder-toolbar {
+    border: 1px solid rgba(212,175,55,0.7);
+    background: linear-gradient(145deg, var(--blue-royal), var(--blue-dark));
+    box-shadow: 0 8px 20px rgba(13,20,69,0.16);
+}
+#tab-misar-tech .founder-toolbar .search-box,
+#gm-tab-misar_tech .founder-toolbar .search-box {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid rgba(212,175,55,0.55);
+    border-radius: 10px;
+    background: var(--sand);
+}
+#tab-misar-tech .founder-toolbar .search-box i,
+#gm-tab-misar_tech .founder-toolbar .search-box i {
+    color: var(--blue-royal);
+}
+#tab-misar-tech .founder-toolbar .search-box input,
+#gm-tab-misar_tech .founder-toolbar .search-box input {
+    min-width: 0;
+    color: var(--blue-dark);
+    background: transparent;
+}
+#tab-misar-tech .founder-toolbar > select,
+#tab-misar-tech .founder-toolbar > input[type="date"],
+#gm-tab-misar_tech .founder-toolbar > select,
+#gm-tab-misar_tech .founder-toolbar > input[type="date"] {
+    min-height: 42px;
+    padding: 8px 11px;
+    border: 1px solid rgba(212,175,55,0.65);
+    border-radius: 10px;
+    background: var(--sand);
+    color: var(--blue-dark);
+    font: inherit;
+}
+#tab-misar-tech .founder-toolbar > select:focus,
+#tab-misar-tech .founder-toolbar > input[type="date"]:focus,
+#gm-tab-misar_tech .founder-toolbar > select:focus,
+#gm-tab-misar_tech .founder-toolbar > input[type="date"]:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(212,175,55,0.22);
+}
+#tab-misar-tech .founder-toolbar > select:disabled,
+#tab-misar-tech .founder-toolbar > input[type="date"]:disabled,
+#gm-tab-misar_tech .founder-toolbar > select:disabled,
+#gm-tab-misar_tech .founder-toolbar > input[type="date"]:disabled {
+    border-color: rgba(212,175,55,0.25);
+    background: var(--sand-dark);
+    color: var(--brown-mid);
+    cursor: not-allowed;
+}
+#tab-misar-tech .founder-toolbar > select option,
+#gm-tab-misar_tech .founder-toolbar > select option {
+    background: var(--sand);
+    color: var(--blue-dark);
+}
+#tab-misar-tech .founder-toolbar .btn,
+#gm-tab-misar_tech .founder-toolbar .btn {
+    min-height: 42px;
+    padding: 8px 16px;
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    background: var(--gold);
+    color: var(--blue-royal);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
+#tab-misar-tech .founder-toolbar .btn:hover,
+#gm-tab-misar_tech .founder-toolbar .btn:hover {
+    background: var(--sand);
+}
+#misarTechAdminTableWrapper,
+#gmMisarTechAdminTableWrapper {
+    overflow-x: auto;
+    border: 1px solid rgba(212,175,55,0.65);
+    border-radius: 14px;
+    background: var(--sand);
+    box-shadow: 0 8px 20px rgba(13,20,69,0.12);
+}
+#misarTechAdminTable,
+#gmMisarTechAdminTable {
+    min-width: 700px;
+    margin: 0;
+    border-radius: 14px;
+    box-shadow: none;
+    background: var(--sand);
+}
+#misarTechAdminTable th,
+#gmMisarTechAdminTable th {
+    border-bottom: 2px solid var(--gold);
+    background: var(--blue-royal);
+    color: var(--gold);
+}
+#misarTechAdminTable td,
+#gmMisarTechAdminTable td {
+    border-bottom-color: rgba(26,35,126,0.12);
+    background: var(--sand);
+    color: var(--blue-dark);
+}
+#misarTechAdminTable tbody tr:nth-child(even) td,
+#gmMisarTechAdminTable tbody tr:nth-child(even) td {
+    background: var(--sand-dark);
+}
+#misarTechAdminTable tbody tr:hover td,
+#gmMisarTechAdminTable tbody tr:hover td {
+    background: rgba(212,175,55,0.18);
+}
+#misarTechAdminTable .btn,
+#gmMisarTechAdminTable .btn {
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px;
+    background: var(--blue-royal);
+    color: var(--gold);
+    font: inherit;
+}
+#misarTechAdminTable .btn:hover,
+#gmMisarTechAdminTable .btn:hover {
+    background: var(--blue-dark);
+}
+.mt-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.mt-status-new {
+    border-color: #9bb7f5;
+    background: #e7efff;
+    color: #173b82;
+}
+.mt-status-reviewing {
+    border-color: #e0b84e;
+    background: #fff3cd;
+    color: #684b00;
+}
+.mt-status-quoted {
+    border-color: #7ab7d5;
+    background: #e3f3fa;
+    color: #15516b;
+}
+.mt-status-in_progress {
+    border-color: var(--gold-dark);
+    background: #f5e8b6;
+    color: var(--blue-dark);
+}
+.mt-status-delivered {
+    border-color: #78b89a;
+    background: #e2f2e9;
+    color: #1d5c3b;
+}
+.mt-status-cancelled {
+    border-color: #d69a9a;
+    background: #f8e5e5;
+    color: #812f35;
+}
+
+/* تفاصيل الطلب في لوحة الإدارة */
+#mtDetailsModal .modal-content {
+    border-color: var(--gold);
+    border-radius: 22px;
+    background: linear-gradient(160deg, var(--blue-royal), var(--blue-dark));
+    color: var(--text-light);
+    direction: rtl;
+    text-align: right;
+}
+#mtDetailsModal .modal-content > h3 {
+    color: var(--gold) !important;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(212,175,55,0.45);
+}
+#mtDetailsModal .founder-table {
+    border: 1px solid rgba(212,175,55,0.5);
+    background: var(--sand);
+    color: var(--blue-dark);
+}
+#mtDetailsModal .founder-table th {
+    width: 32%;
+    border-bottom: 1px solid rgba(212,175,55,0.35);
+    background: rgba(212,175,55,0.2);
+    color: var(--blue-royal);
+}
+#mtDetailsModal .founder-table td {
+    border-bottom: 1px solid rgba(26,35,126,0.12);
+    background: var(--sand);
+    color: var(--blue-dark);
+}
+#mtDetailsModal .form-group label {
+    color: var(--gold);
+    font-weight: 800;
+}
+#mtDetailsModal .form-group input,
+#mtDetailsModal .form-group select,
+#mtDetailsModal .form-group textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 12px;
+    border: 1px solid rgba(212,175,55,0.7);
+    border-radius: 10px;
+    background: var(--sand);
+    color: var(--blue-dark);
+    font: inherit;
+    text-align: right;
+}
+#mtDetailsModal .form-group textarea {
+    min-height: 82px;
+}
+#mtDetailsModal .form-group input:focus,
+#mtDetailsModal .form-group select:focus,
+#mtDetailsModal .form-group textarea:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(212,175,55,0.2);
+}
+#mtDetailsModal .form-group input:disabled,
+#mtDetailsModal .form-group select:disabled,
+#mtDetailsModal .form-group textarea:disabled {
+    border-color: rgba(212,175,55,0.2);
+    background: var(--sand-dark);
+    color: var(--brown-mid);
+    cursor: not-allowed;
+}
+#mtDetailsModal .btn-primary {
+    min-height: 46px;
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    background: var(--gold);
+    color: var(--blue-royal);
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+}
+#mtDetailsModal .btn-primary:hover {
+    background: var(--sand);
+}
+#mtDetailsModal .modal-content > p {
+    color: var(--text-light) !important;
+}
+
 .image-preview-list {
     display: flex;
     flex-wrap: wrap;
@@ -2360,6 +2856,47 @@ body {
     margin-top: 10px;
 }
 .image-preview-list img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; display: block; }
+
+@media (max-width: 480px) {
+    .mt-form-modal {
+        padding: 12px;
+    }
+    .mt-form-modal .mt-form-card {
+        padding: 17px;
+        border-radius: 18px;
+    }
+    .mt-form-title {
+        font-size: 1.05rem;
+    }
+    #misarTechScreen .products-section {
+        padding: 20px 4% 24px;
+    }
+    #misarTechScreen .categories-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    #misarTechScreen .mt-contact-actions {
+        grid-template-columns: 1fr;
+    }
+    #tab-misar-tech .founder-toolbar,
+    #gm-tab-misar_tech .founder-toolbar {
+        padding: 12px;
+    }
+    #tab-misar-tech .founder-toolbar > select,
+    #tab-misar-tech .founder-toolbar > input[type="date"],
+    #gm-tab-misar_tech .founder-toolbar > select,
+    #gm-tab-misar_tech .founder-toolbar > input[type="date"],
+    #tab-misar-tech .founder-toolbar .btn,
+    #gm-tab-misar_tech .founder-toolbar .btn {
+        width: 100%;
+    }
+    #mtDetailsModal .modal-content {
+        padding: 16px;
+    }
+    #mtDetailsModal .founder-table th {
+        width: 36%;
+    }
+}
 
 /* ===== مودال إضافة تقييم ===== */
 #addReviewModal .modal-content {
@@ -4708,19 +5245,29 @@ body {
     gap: 10px;
 }
 .service-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: 55px minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
-    flex-wrap: wrap;
 }
 .service-header-info {
     flex: 1;
-    min-width: 100px;
+    min-width: 0;
 }
 .service-title {
     font-size: 1.1rem;
     font-weight: 900;
     color: var(--brown-dark);
+}
+.service-brand-name,
+.service-brand-description {
+    display: block;
+}
+.service-brand-name {
+    unicode-bidi: isolate;
+}
+.service-brand-description {
+    font-size: 0.9em;
 }
 .service-price {
     color: var(--gold);
@@ -4790,9 +5337,13 @@ body {
         font-size: 2.2rem;
     }
     .service-header {
+        grid-template-columns: 55px minmax(0, 1fr);
         gap: 8px;
     }
     .service-status-badge {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: start;
         font-size: 0.65rem;
         padding: 3px 10px;
     }
@@ -5267,4 +5818,189 @@ button.pending-badge:hover {
     .gm-perm-grid { grid-template-columns: 1fr; }
     #gmTabs { gap: 4px; padding: 8px 3%; }
     #gmTabs .founder-tab { font-size: 0.72rem; padding: 8px 10px; }
+}
+
+
+/* ============================================================
+   مركز التحكم في إشعارات المؤسس (Founder Control Center)
+   ============================================================ */
+
+.fcc-top {
+    background: #faf8f5;
+    border: 1px solid #f0ede8;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+}
+
+.fcc-master {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 800;
+    color: var(--blue-royal);
+    user-select: none;
+}
+
+.fcc-master input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--gold);
+    cursor: pointer;
+}
+
+.fcc-field {
+    margin-bottom: 14px;
+}
+
+.fcc-field label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--blue-royal);
+    margin-bottom: 6px;
+}
+
+.fcc-field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.fcc-field-row input[type="tel"],
+.fcc-field-row select {
+    flex: 1;
+    min-width: 180px;
+    padding: 9px 12px;
+    border: 1px solid #e2ddd5;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: #fff;
+}
+
+.fcc-field-row input[type="tel"]:focus,
+.fcc-field-row select:focus {
+    outline: none;
+    border-color: var(--gold);
+}
+
+.fcc-hint {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 6px;
+}
+
+/* شبكة حالة الربط */
+.fcc-status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.fcc-stat {
+    background: #faf8f5;
+    border: 1px solid #f0ede8;
+    border-radius: 12px;
+    padding: 10px 12px;
+    text-align: center;
+}
+
+.fcc-stat-label {
+    font-size: 0.72rem;
+    color: #777;
+    margin-bottom: 4px;
+}
+
+.fcc-stat-value {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: var(--blue-royal);
+    word-break: break-word;
+}
+
+/* مجموعات أنواع الإشعارات */
+.fcc-group {
+    border: 1px solid #f0ede8;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: #fff;
+}
+
+.fcc-group-title {
+    font-size: 0.9rem;
+    font-weight: 900;
+    color: var(--blue-royal);
+    margin: 0 0 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fcc-items {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.fcc-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: #faf8f5;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.fcc-item:hover { background: #f4efe6; }
+
+.fcc-item input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--gold);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.fcc-item:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.fcc-item-label { flex: 1; color: #333; }
+
+.fcc-badge {
+    font-size: 0.65rem;
+    background: #f0e2c0;
+    color: #8a6d1f;
+    border-radius: 8px;
+    padding: 2px 7px;
+    white-space: nowrap;
+}
+
+/* حالة السجل */
+.fcc-status {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.fcc-st-ok { background: #dff3e3; color: #1f7a3d; }
+.fcc-st-fail { background: #fbe0e0; color: #b32323; }
+.fcc-st-skip { background: #eee9e0; color: #777; }
+
+@media (max-width: 768px) {
+    .fcc-items { grid-template-columns: 1fr; }
+    .fcc-status-grid { grid-template-columns: 1fr; }
 }

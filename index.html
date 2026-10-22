@@ -80,8 +80,6 @@
                 </div>
                 <h1 class="login-title">تسجيل الدخول</h1>
                 <p class="register-subtitle">سجّل بحسابك — نوع حسابك محفوظ تلقائياً ولا يحتاج اختياراً.</p>
-                <button class="google-btn" id="googleLoginBtn"><i class="fab fa-google"></i> تسجيل الدخول عبر Google</button>
-                <div style="text-align:center; margin:15px 0; color:#aaa;">أو</div>
                 <div class="input-group">
                     <label class="input-label">البريد الإلكتروني</label>
                     <input type="email" class="input-field" id="loginEmail" placeholder="example@email.com">
@@ -257,6 +255,93 @@
         </div>
     </div>
 
+    <!-- ========== شاشة MISAR TECH ========== -->
+    <div class="screen hidden" id="misarTechScreen">
+        <div class="app-header">
+            <div class="header-content">
+                <div class="header-left"><button class="back-btn active" onclick="goBackFromMisarTech()"><i class="fas fa-arrow-right"></i></button></div>
+                <div class="header-title">MISAR TECH</div>
+                <div class="header-actions"></div>
+            </div>
+        </div>
+        <div class="products-section">
+            <div class="section-title" style="display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-code" style="color:#1a237e;"></i> البرمجة والحلول الرقمية
+            </div>
+            <p class="category-desc" style="padding:0 16px; margin:8px 0 16px;">اطلب تصميم موقع إلكتروني أو إنشاء منصة أو تطبيق أو نظام لإدارة أعمالك</p>
+            <div class="categories-grid" id="misarTechServices"></div>
+            <div style="padding:0 16px; margin-top:16px;">
+                <button class="btn btn-primary" style="width:100%;" onclick="openMisarTechForm()">
+                    <i class="fas fa-paper-plane"></i> اطلب مشروعك الآن
+                </button>
+                <div class="mt-contact-actions">
+                    <button type="button" class="mt-ai-button" onclick="openMisarTechChat()">
+                        <i class="fas fa-robot"></i> اسأل MISAR AI عن مشروعك
+                    </button>
+                    <button type="button" class="mt-share-button" onclick="copyMisarTechLink()">
+                        <i class="fas fa-link"></i> نسخ رابط القسم
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- نموذج طلب المشروع -->
+        <div class="modal mt-form-modal" id="misarTechFormModal" onclick="if(event.target===this) closeMisarTechForm()">
+            <div class="modal-content mt-form-card" role="dialog" aria-modal="true" aria-labelledby="mtFormTitle">
+                <div class="mt-form-heading">
+                    <h3 class="mt-form-title" id="mtFormTitle"><i class="fas fa-file-signature"></i> طلب مشروع جديد</h3>
+                    <button type="button" class="mt-form-close" aria-label="إغلاق نموذج الطلب" onclick="closeMisarTechForm()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="mt-form-fields">
+                <div id="mtFormError" role="alert"></div>
+                <div id="mtFormSuccess" role="status"></div>
+                <div class="mt-form-group">
+                    <label>الاسم *</label>
+                    <input type="text" id="mtName" maxlength="100" placeholder="اسمك الكامل">
+                </div>
+                <div class="mt-form-group">
+                    <label>وسيلة التواصل (واتساب / هاتف / بريد) *</label>
+                    <input type="text" id="mtContact" maxlength="150" placeholder="مثال: 010xxxxxxxx أو بريدك الإلكتروني">
+                </div>
+                <div class="mt-form-group">
+                    <label>نوع المشروع *</label>
+                    <select id="mtProjectType">
+                        <option value="">اختر نوع المشروع</option>
+                        <option value="website">موقع إلكتروني</option>
+                        <option value="store">متجر أو منصة إلكترونية</option>
+                        <option value="mobile_app">تطبيق موبايل</option>
+                        <option value="business_system">نظام إدارة أعمال</option>
+                        <option value="ai_automation">ذكاء اصطناعي / أتمتة</option>
+                        <option value="other">أخرى</option>
+                    </select>
+                </div>
+                <div class="mt-form-group">
+                    <label>عنوان مختصر للمشروع *</label>
+                    <input type="text" id="mtTitle" maxlength="120" placeholder="عنوان يلخّص فكرتك">
+                </div>
+                <div class="mt-form-group">
+                    <label>وصف الفكرة والخصائص المطلوبة *</label>
+                    <textarea id="mtBrief" rows="5" maxlength="2000" placeholder="اشرح فكرتك والخصائص التي تحتاجها..."></textarea>
+                </div>
+                <div class="mt-form-group">
+                    <label>الميزانية المتوقعة</label>
+                    <input type="text" id="mtBudget" maxlength="50" placeholder="مثال: 5000 - 10000 ج.م (اختياري)">
+                </div>
+                <div class="mt-form-group">
+                    <label>الموعد المتوقع للتسليم</label>
+                    <input type="date" id="mtDeadline" min="">
+                </div>
+                <div class="mt-form-group">
+                    <label>ملاحظات إضافية</label>
+                    <textarea id="mtNotes" rows="3" maxlength="1000" placeholder="أي تفاصيل إضافية (اختياري)"></textarea>
+                </div>
+                </div>
+                <button type="button" class="btn btn-primary mt-form-submit" id="mtSubmitBtn" onclick="submitMisarTechRequest()">
+                    <i class="fas fa-paper-plane"></i> إرسال الطلب
+                </button>
+            </div>
+            </div>
+        </div>
+
     <!-- ========== شاشة المتجر ========== -->
     <div class="screen hidden" id="marketScreen">
         <div class="app-header">
@@ -352,7 +437,12 @@
         </div>
         <div class="profile-menu">
 <a href="#" class="menu-item" onclick="showScreen('ordersScreen')"><div class="menu-icon"><i class="fas fa-shopping-bag"></i></div><div class="menu-text">طلباتي</div><i class="fas fa-chevron-left menu-arrow"></i></a>
-            <a href="#" class="menu-item" id="sellerDashboardMenuItem" style="display:none;" onclick="showScreen('sellerDashboardScreen')"><div class="menu-icon"><i class="fas fa-store"></i></div><div class="menu-text">لوحة البائع</div><i class="fas fa-chevron-left menu-arrow"></i></a>
+                    <div style="padding: 0 5%; margin-top: 10px;">
+                        <button class="login-btn" id="misarPushNotificationsButton" onclick="toggleSellerPushNotifications()" style="background: linear-gradient(135deg, #1a237e, #0d47a1); padding: 12px;">
+                            <i class="fas fa-bell"></i> تفعيل إشعارات التطبيق
+                        </button>
+                    </div>
+                    <a href="#" class="menu-item" id="sellerDashboardMenuItem" style="display:none;" onclick="showScreen('sellerDashboardScreen')"><div class="menu-icon"><i class="fas fa-store"></i></div><div class="menu-text">لوحة البائع</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="deliveryDashboardMenuItem" style="display:none;" onclick="showScreen('deliveryDashboardScreen')"><div class="menu-icon"><i class="fas fa-truck"></i></div><div class="menu-text">لوحة المندوب</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="founderDashboardMenuItem" style="display:none;" onclick="showScreen('founderDashboardScreen')"><div class="menu-icon"><i class="fas fa-crown"></i></div><div class="menu-text">لوحة تحكم المؤسس</div><i class="fas fa-chevron-left menu-arrow"></i></a>
             <a href="#" class="menu-item" id="generalManagerDashboardMenuItem" style="display:none;" onclick="showScreen('generalManagerDashboardScreen')"><div class="menu-icon"><i class="fas fa-user-tie"></i></div><div class="menu-text">لوحة المدير العام</div><i class="fas fa-chevron-left menu-arrow"></i></a>
@@ -429,6 +519,7 @@
                 <div class="header-actions">
                     <button class="header-icon" onclick="refreshSellerDashboard()" title="تحديث"><i class="fas fa-sync-alt"></i></button>
                     <button class="header-icon" onclick="showAddProductForm()" title="إضافة منتج"><i class="fas fa-plus"></i></button>
+                    <button class="header-icon" id="sellerPushNotificationsButton" onclick="toggleSellerPushNotifications()" title="تفعيل إشعارات الطلبات"><i class="fas fa-bell"></i></button>
                     <button class="header-icon" onclick="showNotifications()" title="الإشعارات"><i class="fas fa-bell"></i><span class="notification-badge" id="sellerNotificationBadge">0</span></button>
                 </div>
             </div>
@@ -542,6 +633,7 @@
                 <div class="header-left"><button class="back-btn active" onclick="goBack()"><i class="fas fa-arrow-right"></i></button><div class="header-title">لوحة المندوب</div></div>
                 <div class="header-actions">
                     <button class="header-icon" onclick="refreshDeliveryDashboard()" title="تحديث"><i class="fas fa-sync-alt"></i></button>
+                    <button class="header-icon" id="deliveryPushNotificationsButton" onclick="toggleSellerPushNotifications()" title="تفعيل إشعارات التطبيق"><i class="fas fa-bell"></i></button>
                     <button class="header-icon" onclick="showNotifications()" title="الإشعارات"><i class="fas fa-bell"></i><span class="notification-badge" id="deliveryNotificationBadge">0</span></button>
                 </div>
             </div>
@@ -629,9 +721,11 @@
             <button class="founder-tab" data-tab="properties" onclick="switchFounderTab('properties')"><i class="fas fa-building"></i> العقارات</button>
             <button class="founder-tab" data-tab="services" onclick="switchFounderTab('services')"><i class="fas fa-concierge-bell"></i> الخدمات</button>
             <button class="founder-tab" data-tab="orders" onclick="switchFounderTab('orders')"><i class="fas fa-shopping-cart"></i> الطلبات</button>
+            <button class="founder-tab" data-tab="misar-tech" onclick="switchFounderTab('misar-tech')"><i class="fas fa-code"></i> طلبات MISAR TECH</button>
             <button class="founder-tab" data-tab="reports" onclick="switchFounderTab('reports')"><i class="fas fa-flag"></i> البلاغات</button>
             <button class="founder-tab" data-tab="logs" onclick="switchFounderTab('logs')"><i class="fas fa-history"></i> سجل النشاط</button>
             <button class="founder-tab" data-tab="notifications" onclick="switchFounderTab('notifications')"><i class="fas fa-bell"></i> الإشعارات</button>
+            <button class="founder-tab" data-tab="notification-control" onclick="switchFounderTab('notification-control')"><i class="fas fa-sliders-h"></i> مركز التحكم في الإشعارات</button>
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
             <button class="founder-tab" data-tab="locations" onclick="switchFounderTab('locations')"><i class="fas fa-map-marked-alt"></i> إدارة المواقع</button>
             <button class="founder-tab" data-tab="general-manager" onclick="switchFounderTab('general-manager')"><i class="fas fa-user-tie"></i> المدير العام</button>
@@ -860,6 +954,7 @@
                         </select>
                         <input type="email" id="specificUserEmail" class="input-field" placeholder="البريد الإلكتروني للمستخدم" style="display:none; margin-top:8px;">
                     </div>
+                    <p class="input-hint">سيصل الإشعار داخل التطبيق، وكذلك كإشعار Push للمستخدمين الذين فعّلوا إشعارات التطبيق.</p>
                     <button class="login-btn" onclick="sendBulkNotification()"><i class="fas fa-paper-plane"></i> إرسال الإشعار</button>
                 </div>
             </div>
@@ -963,10 +1058,10 @@
 
                 <div style="margin-top:18px;">
                     <h4><i class="fas fa-users"></i> المدراء العامون</h4>
-                    <p style="color:#666; font-size:0.85rem;">اضغط «الصلاحيات» بجانب أي مدير لتخصيص صلاحياته، أو «تسمية» لتسميته (مشرف / إداري / مدير...).</p>
+                    <p style="color:#666; font-size:0.85rem;">اكتب المسمى بنفسك من «الاسم الظاهر»: سيظهر بجانب اسم المدير، ويُستخدم لتغيير عبارة «لوحة المدير العام» في حسابه وعنوان لوحته. لن يتغير دوره أو صلاحياته.</p>
                     <div style="overflow-x:auto;">
                     <table class="founder-table" id="gmListTable">
-                        <thead><tr><th>الاسم</th><th>التسمية / الدور</th><th>البريد</th><th>الحالة</th><th>تاريخ التعيين</th><th>الإيقاف</th><th>الإجراءات</th></tr></thead>
+                        <thead><tr><th>الاسم</th><th>المسمى الظاهر للمستخدم</th><th>البريد</th><th>الحالة</th><th>تاريخ التعيين</th><th>الإيقاف</th><th>الإجراءات</th></tr></thead>
                         <tbody id="gmListTableBody"><tr><td colspan="7" style="text-align:center;">جاري التحميل...</td></tr></tbody>
                     </table>
                     </div>
@@ -981,6 +1076,85 @@
                         <button class="filter-btn" onclick="onGmApplyTemplate('default')"><i class="fas fa-undo"></i> قالب: الافتراضي</button>
                     </div>
                     <div id="gmPermissionsGrid" class="gm-perm-grid"></div>
+                </div>
+            </div>
+
+            <!-- تبويب مركز التحكم في الإشعارات -->
+            <div id="tab-notification-control" class="founder-tab-panel">
+                <div class="founder-card">
+                    <h4><i class="fas fa-sliders-h"></i> مركز التحكم في الإشعارات</h4>
+                    <p style="color:#666; font-size:0.85rem;">تحكم في الإشعارات التي تصلك على واتساب. أي تغيير يُحفظ فوراً على الخادم.</p>
+
+                    <div class="fcc-top">
+                        <label class="fcc-master">
+                            <input type="checkbox" id="fccMasterEnabled" onchange="fccToggleMaster()">
+                            <span><i class="fas fa-power-off"></i> تفعيل جميع الإشعارات (المفتاح الرئيسي)</span>
+                        </label>
+                    </div>
+
+                    <div class="fcc-field">
+                        <label for="fccFounderNumber"><i class="fas fa-phone"></i> رقم واتساب المؤسس</label>
+                        <div class="fcc-field-row">
+                            <input type="tel" id="fccFounderNumber" placeholder="مثال: 2010xxxxxxx" dir="ltr">
+                            <button class="refresh-stats-btn" onclick="fccSaveNumber()"><i class="fas fa-save"></i> حفظ الرقم</button>
+                        </div>
+                    </div>
+
+                    <div class="fcc-field">
+                        <label for="fccChannel"><i class="fas fa-broadcast-tower"></i> قناة الإشعار</label>
+                        <div class="fcc-field-row">
+                            <select id="fccChannel">
+                                <option value="whatsapp">واتساب</option>
+                            </select>
+                            <button class="refresh-stats-btn" onclick="fccSaveChannel()"><i class="fas fa-save"></i> حفظ القناة</button>
+                        </div>
+                    </div>
+
+                    <div class="fcc-field">
+                        <button class="refresh-stats-btn" id="fccTestBtn" onclick="fccTestLink()"><i class="fas fa-vial"></i> اختبار الربط</button>
+                        <button class="refresh-stats-btn" onclick="fccRefresh()"><i class="fas fa-sync-alt"></i> تحديث</button>
+                    </div>
+
+                    <div class="fcc-status-grid">
+                        <div class="fcc-stat"><div class="fcc-stat-label">آخر إرسال ناجح</div><div class="fcc-stat-value" id="fccLastSent">—</div></div>
+                        <div class="fcc-stat"><div class="fcc-stat-label">آخر فشل</div><div class="fcc-stat-value" id="fccLastFailed">—</div></div>
+                        <div class="fcc-stat"><div class="fcc-stat-label">عدد الإشعارات الفاشلة</div><div class="fcc-stat-value" id="fccFailedCount">0</div></div>
+                    </div>
+
+                    <h4 style="margin-top:22px;"><i class="fas fa-list-check"></i> أنواع الإشعارات</h4>
+                    <div id="fccGroups"><p style="color:#666;">جاري التحميل...</p></div>
+
+                    <h4 style="margin-top:22px;"><i class="fas fa-history"></i> سجل الإرسال</h4>
+                    <div style="overflow-x:auto;">
+                        <table class="founder-table">
+                            <thead><tr><th>النوع</th><th>الحالة</th><th>التفاصيل</th><th>التاريخ</th></tr></thead>
+                            <tbody id="fccLogTableBody"><tr><td colspan="4" style="text-align:center;color:#666;">جاري التحميل...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- تبويب طلبات MISAR TECH (المؤسس) -->
+            <div id="tab-misar-tech" class="founder-tab-panel">
+                <div class="founder-toolbar">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="mtSearchInput" placeholder="ابحث بالاسم أو العنوان..." oninput="renderMisarTechAdminTable()"></div>
+                    <select id="mtStatusFilter" onchange="renderMisarTechAdminTable()">
+                        <option value="">كل الحالات</option>
+                        <option value="new">جديد</option>
+                        <option value="reviewing">قيد المراجعة</option>
+                        <option value="quoted">تم التسعير</option>
+                        <option value="in_progress">قيد التنفيذ</option>
+                        <option value="delivered">تم التسليم</option>
+                        <option value="cancelled">ملغي</option>
+                    </select>
+                    <input type="date" id="mtDateFilter" onchange="renderMisarTechAdminTable()">
+                    <button class="btn btn-outline" onclick="loadMisarTechRequests()"><i class="fas fa-sync-alt"></i> تحديث</button>
+                </div>
+                <div id="misarTechAdminTableWrapper">
+                    <table class="founder-table" id="misarTechAdminTable">
+                        <thead><tr><th>العميل</th><th>نوع المشروع</th><th>العنوان</th><th>الحالة</th><th>السعر</th><th>التاريخ</th><th>الإجراءات</th></tr></thead>
+                        <tbody id="misarTechAdminTableBody"><tr><td colspan="7" style="text-align:center;color:#666;">جاري التحميل...</td></tr></tbody>
+                    </table>
                 </div>
             </div>
 
@@ -1153,6 +1327,30 @@
                 </div>
             </div>
         </div>
+        <!-- طلبات MISAR TECH (المدير العام) -->
+        <div id="gm-tab-misar_tech" class="gm-tab-panel founder-tab-panel">
+            <div class="founder-toolbar">
+                <div class="search-box"><i class="fas fa-search"></i><input type="text" id="gmMtSearchInput" placeholder="ابحث بالاسم أو العنوان..." oninput="renderMisarTechAdminTable('gm')"></div>
+                <select id="gmMtStatusFilter" onchange="renderMisarTechAdminTable('gm')">
+                    <option value="">كل الحالات</option>
+                    <option value="new">جديد</option>
+                    <option value="reviewing">قيد المراجعة</option>
+                    <option value="quoted">تم التسعير</option>
+                    <option value="in_progress">قيد التنفيذ</option>
+                    <option value="delivered">تم التسليم</option>
+                    <option value="cancelled">ملغي</option>
+                </select>
+                <input type="date" id="gmMtDateFilter" onchange="renderMisarTechAdminTable('gm')">
+                <button class="btn btn-outline" onclick="loadMisarTechRequests()"><i class="fas fa-sync-alt"></i> تحديث</button>
+            </div>
+            <div id="gmMisarTechAdminTableWrapper">
+                <table class="founder-table" id="gmMisarTechAdminTable">
+                    <thead><tr><th>العميل</th><th>نوع المشروع</th><th>العنوان</th><th>الحالة</th><th>السعر</th><th>التاريخ</th><th></th></tr></thead>
+                    <tbody id="gmMisarTechAdminTableBody"><tr><td colspan="7" style="text-align:center;color:#666;">جاري التحميل...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
     </div> <!-- end generalManagerDashboardScreen -->
 
     <!-- ====== مودال نشاط المدير العام (للمؤسس) ====== -->
@@ -1254,9 +1452,9 @@
     <div id="changePasswordModal" class="modal" onclick="if(event.target===this) closeModal('changePasswordModal')">
         <div class="modal-content">
             <h3 style="color:#1a237e; margin-bottom:15px;">تغيير كلمة المرور</h3>
-            <div class="input-group password-wrapper"><label class="input-label">كلمة المرور الحالية</label><input type="password" id="oldPassword" class="input-field" placeholder="أدخل كلمة المرور الحالية"><span class="toggle-password" onclick="togglePasswordVisibility('oldPassword', this)"><i class="fas fa-eye"></i></span></div>
-            <div class="input-group password-wrapper"><label class="input-label">كلمة المرور الجديدة</label><input type="password" id="newPassword" class="input-field" placeholder="أدخل كلمة المرور الجديدة"><span class="toggle-password" onclick="togglePasswordVisibility('newPassword', this)"><i class="fas fa-eye"></i></span></div>
-            <div class="input-group password-wrapper"><label class="input-label">تأكيد كلمة المرور الجديدة</label><input type="password" id="confirmNewPassword" class="input-field" placeholder="أعد إدخال كلمة المرور الجديدة"><span class="toggle-password" onclick="togglePasswordVisibility('confirmNewPassword', this)"><i class="fas fa-eye"></i></span></div>
+            <div class="input-group password-wrapper"><label class="input-label" for="oldPassword">كلمة المرور الحالية</label><input type="password" id="oldPassword" class="input-field" autocomplete="current-password" placeholder="أدخل كلمة المرور الحالية"><span class="toggle-password" onclick="togglePasswordVisibility('oldPassword', this)"><i class="fas fa-eye"></i></span></div>
+            <div class="input-group password-wrapper"><label class="input-label" for="newPassword">كلمة المرور الجديدة</label><input type="password" id="newPassword" class="input-field" autocomplete="new-password" minlength="8" placeholder="أدخل كلمة المرور الجديدة"><span class="toggle-password" onclick="togglePasswordVisibility('newPassword', this)"><i class="fas fa-eye"></i></span></div>
+            <div class="input-group password-wrapper"><label class="input-label" for="confirmNewPassword">تأكيد كلمة المرور الجديدة</label><input type="password" id="confirmNewPassword" class="input-field" autocomplete="new-password" minlength="8" placeholder="أعد إدخال كلمة المرور الجديدة"><span class="toggle-password" onclick="togglePasswordVisibility('confirmNewPassword', this)"><i class="fas fa-eye"></i></span></div>
             <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="changePassword()">تغيير</button><button class="google-btn" style="flex:1;" onclick="closeModal('changePasswordModal')">إلغاء</button></div>
         </div>
     </div>
@@ -1573,9 +1771,11 @@
 
 <!-- ========== ملفات الجافا سكريبت ========== -->
 <script src="js/supabase.js"></script>
+    <script src="js/push-notifications.js"></script>
     <script src="js/online-users.js"></script>
     <script src="js/misar-ai.js"></script>
-<script src="js/admin-dashboard.js"></script>
+    <script src="js/misar-tech.js"></script>
+    <script src="js/admin-dashboard.js"></script>
 <script src="js/admin-banners.js"></script>
 <script src="js/admin-locations.js"></script>
 <script src="js/general-manager.js"></script>
@@ -1584,6 +1784,7 @@
 <script src="js/product.js"></script>
 <script src="js/cart.js"></script>
 <script src="js/returns.js"></script>
+<script src="js/founder-control-center.js"></script>
 <script>
     // ======== التهيئة العامة ========
     document.addEventListener('DOMContentLoaded', async function() {
@@ -1607,6 +1808,9 @@ if (session) {
                 user_metadata: user.user_metadata
             };
             await loadUserData();
+            if (typeof misarPushSyncCurrentSubscription === 'function') {
+                misarPushSyncCurrentSubscription();
+            }
             // تطبيق نوع الحساب الذي اختاره المستخدم قبل تسجيل الدخول عبر Google (إن وُجد)
             const appliedType = await applyPendingAccountType();
             if (appliedType) {
@@ -1648,13 +1852,15 @@ if (session) {
         } catch (e) { console.warn('founder visibility load error:', e); }
 
         // 3.2 تسجيل Service Worker لتفعيل الإشعارات على الهاتف (PWA) - بدون انتظار
-        if ('serviceWorker' in navigator) {
+        if ('serviceWorker' in navigator && window.isSecureContext) {
             navigator.serviceWorker.register('./sw.js').then((registration) => {
                 console.log('✅ تم تسجيل Service Worker بنجاح');
                 appState.swRegistration = registration;
             }).catch((swErr) => {
                 console.warn('فشل تسجيل Service Worker:', swErr);
             });
+        } else if ('serviceWorker' in navigator) {
+            console.info('يتطلب Service Worker تشغيل الموقع عبر HTTPS أو localhost؛ لا يعمل من file://.');
         }
 
         // 3.5 معالجة روابط URL المشتركة (منتج أو متجر)
@@ -1663,6 +1869,8 @@ if (session) {
             const productId = urlParams.get('id');
             const storeId = urlParams.get('store');
             const founderParam = urlParams.get('founder');
+            const sectionParam = urlParams.get('section');
+            const pushOrderId = urlParams.get('pushOrder');
 
             if (productId) {
                 const product = appState.products.find(p => p.id === productId);
@@ -1696,6 +1904,13 @@ if (session) {
                     const cleanUrl = window.location.pathname + window.location.hash;
                     window.history.replaceState({}, '', cleanUrl);
                 }, 1500);
+            } else if (sectionParam === 'misar-tech') {
+                appState.currentScreen = 'misarTechScreen';
+            } else if (pushOrderId && appState.userData?.account_type) {
+                const pushRole = appState.userData.account_type;
+                appState.currentScreen = pushRole === 'seller' ? 'sellerDashboardScreen' :
+                    (pushRole === 'delivery' ? 'deliveryDashboardScreen' :
+                    (pushRole === 'founder' ? 'founderDashboardScreen' : 'ordersScreen'));
             }
         } catch (urlErr) {
             console.warn('فشل معالجة معاملات الرابط:', urlErr);
@@ -1715,6 +1930,11 @@ if (session) {
                 new URLSearchParams(window.location.search).get('founder'));
             if (handledByUrl) return;
             showScreen(appState.currentScreen);
+            const pushOrderId = new URLSearchParams(window.location.search).get('pushOrder');
+            if (pushOrderId && appState.user &&
+                typeof openOrderFromPush === 'function') {
+                openOrderFromPush(pushOrderId);
+            }
             if (appState.location) {
                 updateWelcomeLocation();
                 updateProfileLocation();
@@ -1745,6 +1965,9 @@ if (session) {
                     user_metadata: session.user.user_metadata
                 };
                 await loadUserData();
+                if (typeof misarPushSyncCurrentSubscription === 'function') {
+                    misarPushSyncCurrentSubscription();
+                }
                 // تطبيق نوع الحساب الذي اختاره المستخدم قبل تسجيل الدخول عبر Google (إن وُجد)
                 const appliedType = await applyPendingAccountType();
                 if (appliedType) {
@@ -1764,6 +1987,10 @@ if (session) {
                 else if (isApprovedDelivery) targetScreen = 'deliveryDashboardScreen';
                 else if (accountType === 'founder') targetScreen = 'founderDashboardScreen';
                 showScreen(targetScreen);
+                const pushOrderId = new URLSearchParams(window.location.search).get('pushOrder');
+                if (pushOrderId && typeof openOrderFromPush === 'function') {
+                    openOrderFromPush(pushOrderId);
+                }
                 showToast('تم تسجيل الدخول بنجاح', 'success');
 
                 // تحديث معلومات المستخدم في الواجهة
@@ -1803,14 +2030,7 @@ if (session) {
             else showToast('حدث خطأ في النظام', 'error');
         });
 
-// زر Google (تسجيل الدخول)
-        document.getElementById('googleLoginBtn')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (typeof signInWithGoogle === 'function') signInWithGoogle();
-            else showToast('حدث خطأ في النظام', 'error');
-        });
-
-        // روابط التبديل
+// روابط التبديل
         document.getElementById('showRegisterLink')?.addEventListener('click', function(e) {
             e.preventDefault();
             showScreen('registerScreen');
@@ -1907,6 +2127,7 @@ if (session) {
             case 'properties': if (typeof loadPropertiesTable === 'function') loadPropertiesTable(); break;
             case 'services': if (typeof loadServicesTableAdmin === 'function') loadServicesTableAdmin(); break;
             case 'orders': if (typeof loadOrdersTableAdmin === 'function') loadOrdersTableAdmin(); break;
+            case 'misar-tech': if (typeof loadMisarTechRequests === 'function') loadMisarTechRequests(); break;
             case 'reports': if (typeof loadReportsTable === 'function') loadReportsTable(); break;
 case 'logs': if (typeof loadLogsTable === 'function') loadLogsTable(); break;
             case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;

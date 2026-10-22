@@ -9,6 +9,6 @@
 - [x] استدعاء `applyPendingAccountType` عند استعادة الجلسة (`getSession`) في `index.html`
 - [x] استدعاء `applyPendingAccountType` في `onAuthStateChange` (SIGNED_IN) في `index.html`
 - [x] إضافة مستمع حدث لزر Google في شاشة التسجيل
-- [ ] توثيق إعدادات Supabase / Google المطلوبة في الخادم
-- [ ] اختبار تسجيل الدخول عبر Google (عميل / بائع / مندوب)
+- [x] توثيق إعدادات Supabase / Google المطلوبة في الخادم (انظر `GOOGLE_LOGIN_SETUP.md`)
+- [ ] اختبار تسجيل الدخول عبر Google (عميل / بائع / مندوب) — يتطلب تفعيل مزوّد Google في لوحة Supabase
 
