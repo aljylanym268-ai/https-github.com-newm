@@ -1,0 +1,3175 @@
+// ========== قاعدة البيانات ==========
+const SUPABASE_URL = 'https://wwojtkxwmgkrudtevbcb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Rqi9qMZgIrslWSDc61gG-A_QGQxcvNr';
+
+// حماية: قد يفشل تحميل مكتبة supabase من الـ CDN (شبكة/حجب) فتصبح غير معرّفة،
+// وهذا كان يوقف تنفيذ هذا الملف بالكامل فتتعطل كل الدوال (ومنها مركز الإشعارات).
+// هنا نتعامل مع الحالة برسالة واضحة بدل انهيار صامت.
+if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+    console.error('❌ مكتبة supabase-js لم تُحمّل من الـ CDN. تحقق من الاتصال بالإنترنت أو من حجب cdn.jsdelivr.net.');
+    throw new Error('supabase-js CDN failed to load (supabase is not defined)');
+}
+const { createClient } = supabase;
+
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+    }
+});
+
+// ========== تنظيف رابط العودة بعد تسجيل الدخول عبر Google (OAuth) ==========
+// يزيل كود PKCE / التوكنات / أخطاء OAuth من الرابط حتى لا يتسبب تحديث الصفحة
+// في خطأ "code verifier" أو "invalid code" ويضمن عدم تعلق شاشة التحميل.
+(function cleanupOAuthUrl() {
+    try {
+        const url = new URL(window.location.href);
+        const hash = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const oauthError = url.searchParams.get('error') || hash.get('error');
+        const hadAuthData = url.searchParams.has('code') || hash.has('access_token') || !!oauthError;
+        if (oauthError) {
+            const desc = url.searchParams.get('error_description') || hash.get('error_description') || oauthError;
+            console.warn('⚠️ خطأ من مزود المصادقة (OAuth):', desc);
+            if (typeof showToast === 'function') {
+                showToast('تعذّر تسجيل الدخول عبر Google: ' + decodeURIComponent(desc), 'error');
+            }
+        }
+        if (hadAuthData) {
+            url.searchParams.delete('code');
+            url.searchParams.delete('error');
+            url.searchParams.delete('error_description');
+            url.searchParams.delete('error_description_encoded');
+            url.hash = '';
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+            console.log('🧹 تم تنظيف رابط OAuth بعد العودة');
+        }
+    } catch (e) { /* تجاهل */ }
+})();
+
+// ========== الحالة العامة ==========
+const appState = {
+    user: null,
+    userData: {},
+    location: null,
+    products: [],
+    currentProduct: null,
+    services: [
+        {
+            id: 1,
+            name: "خدمات الصيانة",
+            description: "صيانة منزلية، تصليح أجهزة كهربائية، سباكة",
+            price: "150 ج.م",
+            icon: "fas fa-tools",
+            status: "coming_soon",
+            features: ['فنيين معتمدين', 'ضمان على العمل', 'أسعار محددة']
+        },
+        {
+            id: 2,
+            name: "خدمات التوصيل",
+            description: "توصيل طلبات، نقل عفش، توصيل وثائق",
+            price: "50 ج.م",
+            icon: "fas fa-shipping-fast",
+            status: "coming_soon",
+            features: ['تتبع مباشر', 'سرعة في التنفيذ', 'توصيل آمن']
+        },
+        {
+            id: 3,
+            name: "الخدمات التعليمية",
+            description: "دروس خصوصية، دورات تدريبية، استشارات تعليمية",
+            price: "100 ج.م/ساعة",
+            icon: "fas fa-graduation-cap",
+            status: "coming_soon",
+            features: ['مدرسين خبرة', 'مناهج مطورة', 'تعليم تفاعلي']
+        },
+        {
+            id: 4,
+            name: "MISAR Education",
+            description: "منصة تعليمية متكاملة لدروس التقوية والدورات التدريبية في مختلف المجالات",
+            price: "يُحدد لاحقاً",
+            icon: "fas fa-university",
+            status: "coming_soon",
+            features: ['محتوى رقمي', 'شهادات معتمدة', 'متابعة فردية']
+        },
+        {
+            id: 5,
+            name: "MISAR FOOD",
+            description: "اكتشف أفضل المطاعم والكافيهات واطلب وجبتك المفضلة",
+            price: "يُحدد لاحقاً",
+            icon: "fas fa-utensils",
+            status: "coming_soon",
+            features: ['تنوع في القائمة', 'عروض حصرية', 'دفع إلكتروني']
+        },
+        {
+            id: 6,
+            name: "الأكل من البيت",
+            description: "وجبات منزلية طازجة وصحية محضرة بكل حب من الأسر المنتجة",
+            price: "يُحدد لاحقاً",
+            icon: "fas fa-home",
+            status: "coming_soon",
+            features: ['نظافة تامة', 'مذاق بيتي', 'دعم الأسر المنتجة']
+        },
+        {
+            id: 7,
+            name: "المطاعم والكافيهات",
+            description: "حجز طاولات واستكشاف قوائم الطعام في أرقى الكافيهات والمطاعم",
+            price: "يُحدد لاحقاً",
+            icon: "fas fa-mug-hot",
+            status: "coming_soon",
+            features: ['حجز مسبق', 'قوائم محدثة', 'تقييمات الزوار']
+        }
+    ],
+    seller: { products: [], orders: [], currentTab: 'products', filterCategory: 'all', filterOrderStatus: 'all', chart: null },
+    delivery: { availableOrders: [], myOrders: [], currentTab: 'available' },
+    tempImages: [],
+    founderPageVisible: true,
+    founderViews: 0,
+    founderShares: { whatsapp:0, facebook:0, twitter:0, copy:0 },
+    previousScreen: 'homeScreen',
+    currentScreen: 'homeScreen',
+    ordersSubscription: null,
+    notificationsSubscription: null
+};
+
+// ========== بيانات المحافظات والمراكز (مصر) ==========
+// المراكز تتغير حسب المحافظة المختارة
+const MISAR_GOV_CENTERS = {
+    'قنا': ['قنا', 'نقادة', 'قوص', 'دشنا', 'فرشوط', 'أبو تشت', 'نجع حمادي', 'قفط'],
+    'الأقصر': ['الأقصر', 'إسنا', 'أرمنت', 'القرنة', 'الطود', 'القضابية', 'الزينية', 'البياضية', 'أخميم الجديدة'],
+    'أسوان': ['أسوان', 'دراو', 'كوم أمبو', 'نصر النوبة', 'كلابشة', 'إدفو', 'الرديسية', 'البصيلية', 'السباعية', 'عبود', 'شلكان', 'أبو سمبل'],
+    'سوهاج': ['سوهاج', 'أخميم', 'البلينا', 'المراغة', 'المنشاة', 'دار السلام', 'جهينة', 'ساقلته', 'طما', 'طهطا', 'الكوثر'],
+    'أسيوط': ['أسيوط', 'ديروط', 'منفلوط', 'القوصية', 'أبنوب', 'أبو تيج', 'الغنايم', 'ساحل سليف', 'البداري', 'صدفا'],
+    'البحر الأحمر': ['الغردقة', 'رأس غارب', 'سفاجا', 'القصير', 'مرسى علم', 'شلاتين', 'حلايب', 'الجونة'],
+    'المنيا': ['المنيا', 'العدوة', 'مغاغة', 'بني مزار', 'مطاي', 'سمالوط', 'المدينة الفكرية', 'ملوي', 'دير مواس', 'ببا', 'إزراة']
+};
+
+// ====== المحافظات/المراكز المفعّلة من المؤسس ======
+// التخزين في app_settings:
+//  deleted_governorates = JSON.stringify(['محافظة', ...]) — محافظات محذوفة نهائياً
+//  deleted_centers = JSON.stringify({ 'قنا': ['نقادة'], ... }) — مراكز محذوفة نهائياً
+//  extra_centers = JSON.stringify({ 'قنا': ['مركز جديد'], ... }) — مراكز/محافظات مضافة من المؤسس
+// (مفاتيح قديمة enabled_governorates/disabled_centers بتُقرأ وتُدمج تلقائياً)
+
+let _misarLocationSettingsCache = null;
+
+function _parseLocationSetting(raw, fallback) {
+    try { const v = JSON.parse(raw); return v ?? fallback; } catch { return fallback; }
+}
+
+// يحضّر إعدادات المواقع من app_settings (مع cache جلسة)
+async function getLocationSettings() {
+    if (_misarLocationSettingsCache) return _misarLocationSettingsCache;
+    const defaults = { deletedGovernorates: [], deletedCenters: {}, extraCenters: {} };
+    try {
+        const { data, error } = await supabaseClient
+            .from('app_settings')
+            .select('setting_key, setting_value')
+            .in('setting_key', ['deleted_governorates', 'deleted_centers', 'extra_centers', 'disabled_centers']);
+        if (error) throw error;
+        const map = {};
+        (data || []).forEach(s => map[s.setting_key] = s.setting_value);
+        // دمج المفتاح القديم disabled_centers مع الجديد deleted_centers
+        const oldDisabled = map.disabled_centers ? _parseLocationSetting(map.disabled_centers, {}) : {};
+        const newDeleted = map.deleted_centers ? _parseLocationSetting(map.deleted_centers, {}) : {};
+        const mergedCenters = { ...oldDisabled };
+        Object.keys(newDeleted).forEach(g => {
+            mergedCenters[g] = Array.from(new Set([...(mergedCenters[g] || []), ...newDeleted[g]]));
+        });
+        _misarLocationSettingsCache = {
+            deletedGovernorates: map.deleted_governorates ? _parseLocationSetting(map.deleted_governorates, []) : [],
+            deletedCenters: mergedCenters,
+            extraCenters: map.extra_centers ? _parseLocationSetting(map.extra_centers, {}) : {}
+        };
+    } catch (e) {
+        console.warn('تعذر تحميل إعدادات المواقع، استخدام الافتراضي:', e);
+        _misarLocationSettingsCache = defaults;
+    }
+    return _misarLocationSettingsCache;
+}
+
+function clearLocationSettingsCache() { _misarLocationSettingsCache = null; }
+
+// حفظ إعدادات المواقع من لوحة المؤسس
+async function saveLocationSettings(settings) {
+    const rows = [
+        { setting_key: 'deleted_governorates', setting_value: JSON.stringify(settings.deletedGovernorates ?? []) },
+        { setting_key: 'deleted_centers', setting_value: JSON.stringify(settings.deletedCenters ?? {}) },
+        { setting_key: 'extra_centers', setting_value: JSON.stringify(settings.extraCenters ?? {}) }
+    ];
+    for (const row of rows) {
+        const { error } = await supabaseClient
+            .from('app_settings')
+            .upsert({
+                setting_key: row.setting_key,
+                setting_value: row.setting_value, // JSON string صالح — jsonb يقبلها
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'setting_key' });
+        if (error) throw error;
+    }
+    clearLocationSettingsCache();
+    if (typeof logActivity === 'function' && appState.user) {
+        await logActivity(appState.user.id, 'update_location_settings', {});
+    }
+}
+
+// قائمة المحافظات المتاحة فعلياً (بعد تصفية المؤسس)
+async function getAvailableGovernorates() {
+    const s = await getLocationSettings();
+    const all = Object.keys(MISAR_GOV_CENTERS)
+        .concat(Object.keys(s.extraCenters || {}).filter(g => !MISAR_GOV_CENTERS[g]));
+    return all.filter(g => !(s.deletedGovernorates || []).includes(g));
+}
+
+// قائمة المراكز المتاحة لمحافظة معينة (بعد تصفية المؤسس)
+async function getAvailableCenters(governorate) {
+    const s = await getLocationSettings();
+    const base = MISAR_GOV_CENTERS[governorate] || [];
+    const extra = (s.extraCenters || {})[governorate] || [];
+    const deleted = (s.deletedCenters || {})[governorate] || [];
+    return base.concat(extra.filter(c => !base.includes(c))).filter(c => !deleted.includes(c));
+}
+
+// تعبئة قائمة المحافظات في أي select مع تحديث المراكز حسب المحافظة
+async function populateGovernorateSelect(selectEl, selectedValue = '') {
+    if (!selectEl) return;
+    const governorates = await getAvailableGovernorates();
+    selectEl.innerHTML = '<option value="">اختر المحافظة</option>';
+    governorates.forEach(gov => {
+        const opt = document.createElement('option');
+        opt.value = gov;
+        opt.textContent = gov;
+        selectEl.appendChild(opt);
+    });
+    if (selectedValue && governorates.includes(selectedValue)) selectEl.value = selectedValue;
+}
+
+async function populateCenterSelect(centerEl, governorate, selectedValue = '') {
+    if (!centerEl) return;
+    const centers = await getAvailableCenters(governorate);
+    centerEl.innerHTML = '<option value="">اختر المركز / المدينة</option>';
+    centers.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        centerEl.appendChild(opt);
+    });
+    if (selectedValue && centers.includes(selectedValue)) centerEl.value = selectedValue;
+}
+
+// تهيئة قوائم المحافظة/المركز في شاشة التسجيل
+async function initRegisterLocationSelectors() {
+    const govEl = document.getElementById('registerGovernorate');
+    const centerEl = document.getElementById('registerCenter');
+    if (!govEl || !centerEl) return;
+    await populateGovernorateSelect(govEl, appState.userData?.governorate || 'قنا');
+    await populateCenterSelect(centerEl, govEl.value || 'قنا', appState.userData?.center || '');
+    govEl.addEventListener('change', async () => {
+        await populateCenterSelect(centerEl, govEl.value);
+    });
+}
+
+// تهيئة وربط قوائم الموقع في نموذج توصيل (prefix مثل 'checkout' أو 'direct')
+function setupCheckoutLocationSelectors(prefix) {
+    const govEl = document.getElementById(prefix + 'Governorate');
+    const centerEl = document.getElementById(prefix + 'Center') || document.getElementById(prefix + 'City');
+    if (!govEl || !centerEl || govEl.dataset.locationBound === '1') return;
+    govEl.dataset.locationBound = '1';
+    govEl.addEventListener('change', () => {
+        populateCenterSelect(centerEl, govEl.value);
+    });
+}
+
+// تعبئة نموذج التوصيل تلقائياً من بيانات الحساب (user_data للمستخدم الحالي)
+// لا يعدّل بيانات الحساب إلا إذا اختار المستخدم الحفظ صراحةً (checkbox)
+function fillCheckoutFormFromUserData(prefix) {
+    const userData = appState.userData || {};
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) el.value = val;
+    };
+    const govEl = document.getElementById(prefix + 'Governorate');
+    const centerEl = document.getElementById(prefix + 'Center') || document.getElementById(prefix + 'City');
+    const governorate = userData.governorate || 'قنا';
+    const center = userData.center || '';
+
+    if (govEl) {
+        populateGovernorateSelect(govEl, governorate).then(() => { govEl.value = governorate; });
+    }
+    if (centerEl) {
+        populateCenterSelect(centerEl, governorate, center).then(() => { centerEl.value = center; });
+    }
+    setVal(prefix + 'Name', userData.name || '');
+    setVal(prefix + 'Phone', userData.phone || '');
+    setVal(prefix + 'Address', userData.address || '');
+    setVal(prefix + 'Notes', '');
+    const saveCb = document.getElementById(prefix === 'checkout' ? 'saveCheckoutAddressAsDefault' : 'saveAddressAsDefault');
+    if (saveCb) saveCb.checked = false;
+}
+
+// حفظ العنوان الجديد كعنوان أساسي في user_data للمستخدم الحالي فقط عند طلبه صراحةً
+async function saveAddressAsDefaultIfRequested(prefix, governorate, center, address, phone) {
+    const saveCb = document.getElementById(prefix === 'checkout' ? 'saveCheckoutAddressAsDefault' : 'saveAddressAsDefault');
+    if (!saveCb || !saveCb.checked || !appState.user) return;
+    try {
+        const updates = { id: appState.user.id };
+        if (governorate) updates.governorate = governorate;
+        if (center) updates.center = center;
+        if (address) updates.address = address;
+        if (phone) updates.phone = phone;
+        const { error } = await supabaseClient.from('user_data').upsert(withProtectedRole(updates), { onConflict: 'id' });
+        if (error) {
+            // الأعمدة الجديدة قد لا تكون موجودة بعد — نحفظ المتوفر فقط
+            const base = { id: appState.user.id };
+            if (phone) base.phone = phone;
+            const { error: e2 } = await supabaseClient.from('user_data').upsert(withProtectedRole(base), { onConflict: 'id' });
+            if (e2) { console.warn('⚠️ فشل حفظ العنوان الأساسي:', e2); return; }
+        }
+        if (governorate) appState.userData.governorate = governorate;
+        if (center) { appState.userData.center = center; if (appState.location) appState.location.center = center; }
+        if (address) appState.userData.address = address;
+        if (phone) appState.userData.phone = phone;
+        showToast('تم حفظ العنوان الجديد كعنوان أساسي', 'success');
+    } catch (err) {
+        console.warn('⚠️ فشل حفظ العنوان الأساسي:', err);
+    }
+}
+
+// ========== دوال مساعدة ==========
+function getBearElement() { return document.querySelector('.bear-avatar'); }
+function setBearExpression(expression) {
+    const bear = getBearElement();
+    if (!bear) return;
+    bear.classList.remove('sad', 'happy', 'covering-eyes', 'blink');
+    if (expression === 'sad') bear.classList.add('sad');
+    else if (expression === 'happy') bear.classList.add('happy');
+    else if (expression === 'covering') bear.classList.add('covering-eyes');
+    else if (expression === 'blink') { bear.classList.add('blink'); setTimeout(() => bear.classList.remove('blink'), 300); }
+}
+function showBearReaction(success) { setBearExpression(success ? 'happy' : 'sad'); setTimeout(() => setBearExpression(''), 1500); }
+function showLoading(show = true) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.toggle('active', show);
+}
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-exclamation-triangle'}"></i> ${message}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+function escapeHTML(str) { return String(str).replace(/[&<>"]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; if (m === '"') return '&quot;'; return m; }); }
+
+// ========== توليد رمز OTP ==========
+function generateOTP(length = 6) {
+    const digits = '0123456789';
+    let otp = '';
+    for (let i = 0; i < length; i++) {
+        otp += digits[Math.floor(Math.random() * 10)];
+    }
+    console.log('🟡 [generateOTP] تم إنشاء رمز:', otp);
+    return otp;
+}
+
+// ========== ضغط الصور ==========
+async function compressImage(file, maxWidth = 1024, maxHeight = 1024, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                let width = img.width, height = img.height;
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round(height * (maxWidth / width));
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round(width * (maxHeight / height));
+                        height = maxHeight;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (!blob) reject(new Error('فشل ضغط الصورة'));
+                    else resolve(new File([blob], file.name, { type: file.type, lastModified: Date.now() }));
+                }, file.type, quality);
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
+    });
+}
+
+// ========== رفع صور المنتجات ==========
+async function uploadProductImages(files) {
+    if (!files || files.length === 0) return [];
+    const urls = [];
+    for (const file of files) {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) throw new Error(`نوع الملف ${file.name} غير مدعوم`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`الملف ${file.name} كبير جداً (الحد 10 ميجابايت)`);
+        const compressed = await compressImage(file, 1024, 1024, 0.8);
+        const uniqueName = `product-${Date.now()}-${Math.random().toString(36).substring(2)}.${file.name.split('.').pop()}`;
+        const filePath = `products/${uniqueName}`;
+        const { error } = await supabaseClient.storage.from('product-images').upload(filePath, compressed, { cacheControl: '3600', upsert: false });
+        if (error) throw new Error(`فشل رفع ${file.name}: ${error.message}`);
+        const { data: { publicUrl } } = supabaseClient.storage.from('product-images').getPublicUrl(filePath);
+        urls.push(publicUrl);
+    }
+    return urls;
+}
+
+// ========== رفع صور التقييمات ==========
+async function uploadReviewImages(files, reviewId) {
+    if (!files || files.length === 0) return [];
+    const urls = [];
+    for (const file of files) {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) throw new Error(`نوع الملف ${file.name} غير مدعوم`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`الملف ${file.name} كبير جداً (الحد 10 ميجابايت)`);
+        const compressed = await compressImage(file, 1024, 1024, 0.8);
+        const uniqueName = `review-${reviewId}-${Date.now()}-${Math.random().toString(36).substring(2)}.${file.name.split('.').pop()}`;
+        const filePath = `reviews/${uniqueName}`;
+        const { error } = await supabaseClient.storage.from('review-media').upload(filePath, compressed, { cacheControl: '3600', upsert: false });
+        if (error) throw new Error(`فشل رفع ${file.name}: ${error.message}`);
+        const { data: { publicUrl } } = supabaseClient.storage.from('review-media').getPublicUrl(filePath);
+        urls.push(publicUrl);
+    }
+    return urls;
+}
+
+// ========== رفع فيديو التقييم ==========
+async function uploadReviewVideo(file, reviewId) {
+    if (!file) return null;
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+    if (!allowedTypes.includes(file.type)) throw new Error(`نوع الفيديو ${file.name} غير مدعوم`);
+    if (file.size > 50 * 1024 * 1024) throw new Error(`الملف ${file.name} كبير جداً (الحد 50 ميجابايت)`);
+    const uniqueName = `review-${reviewId}-${Date.now()}-${Math.random().toString(36).substring(2)}.${file.name.split('.').pop()}`;
+    const filePath = `reviews/videos/${uniqueName}`;
+    const { error } = await supabaseClient.storage.from('review-media').upload(filePath, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(`فشل رفع الفيديو: ${error.message}`);
+    const { data: { publicUrl } } = supabaseClient.storage.from('review-media').getPublicUrl(filePath);
+    return publicUrl;
+}
+
+// ============================================================
+// دوال نظام التقييمات والمراجعات
+// ============================================================
+
+async function canReviewProduct(productId, userId) {
+    if (!userId) return false;
+    const { data, error } = await supabaseClient
+        .from('orders')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('buyer_id', userId)
+        .eq('status', 'delivered')
+        .maybeSingle();
+    if (error) { console.error('خطأ في التحقق من الشراء:', error); return false; }
+    return !!data;
+}
+
+async function hasUserReviewed(productId, userId) {
+    if (!userId) return false;
+    const { data, error } = await supabaseClient
+        .from('reviews')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (error) { console.error('خطأ في التحقق من التقييم:', error); return false; }
+    return !!data;
+}
+
+async function getUserReview(productId, userId) {
+    if (!userId) return null;
+    const { data, error } = await supabaseClient
+        .from('reviews')
+        .select('*')
+        .eq('product_id', productId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (error) { console.error('خطأ في جلب تقييم المستخدم:', error); return null; }
+    return data;
+}
+
+async function upsertReview(reviewData) {
+    const { product_id, user_id, order_id, rating, title, comment, images, video, is_verified_purchase } = reviewData;
+    const existing = await getUserReview(product_id, user_id);
+    let result;
+    if (existing) {
+        const { data, error } = await supabaseClient
+            .from('reviews')
+            .update({
+                rating,
+                title,
+                comment,
+                images: images || [],
+                video: video || null,
+                updated_at: new Date()
+            })
+            .eq('id', existing.id)
+            .select()
+            .single();
+        if (error) throw error;
+        result = data;
+    } else {
+        const { data, error } = await supabaseClient
+            .from('reviews')
+            .insert({
+                product_id,
+                user_id,
+                order_id,
+                rating,
+                title,
+                comment,
+                images: images || [],
+                video: video || null,
+                is_verified_purchase: is_verified_purchase || false,
+                created_at: new Date(),
+                updated_at: new Date()
+            })
+            .select()
+            .single();
+        if (error) throw error;
+        result = data;
+    }
+    await updateProductRatingStats(product_id);
+    return result;
+}
+
+async function updateProductRatingStats(productId) {
+    const { data, error } = await supabaseClient
+        .from('reviews')
+        .select('rating')
+        .eq('product_id', productId);
+    if (error) { console.error('خطأ في جلب تقييمات المنتج:', error); return; }
+    const total = data.length;
+    const avg = total > 0 ? data.reduce((sum, r) => sum + r.rating, 0) / total : 0;
+    await supabaseClient
+        .from('products')
+        .update({
+            avg_rating: Math.round(avg * 10) / 10,
+            review_count: total
+        })
+        .eq('id', productId);
+}
+
+async function loadProductReviews(productId) {
+    try {
+        const { data, error } = await supabaseClient
+            .from('reviews')
+            .select(`
+                *,
+                users:user_id (id, name, image_url)
+            `)
+            .eq('product_id', productId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    } catch (e) { console.error('فشل جلب التقييمات:', e); return []; }
+}
+
+async function getReviewStats(productId) {
+    const reviews = await loadProductReviews(productId);
+    const total = reviews.length;
+    if (total === 0) return { total, average: 0, distribution: { 1:0, 2:0, 3:0, 4:0, 5:0 } };
+    const sum = reviews.reduce((s, r) => s + r.rating, 0);
+    const average = sum / total;
+    const distribution = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+    reviews.forEach(r => { distribution[r.rating] = (distribution[r.rating] || 0) + 1; });
+    return { total, average, distribution };
+}
+
+async function markReviewHelpful(reviewId, userId) {
+    if (!userId) throw new Error('يجب تسجيل الدخول');
+
+    // تسجيل الإعجاب في جدول review_helpful (إن وُجد الجدول وسمح RLS)
+    // لا نمنع زيادة العدد إذا كان هذا الجدول غير متاح، بل نكمل برفع العدد فقط.
+    try {
+        const { data: existing, error: checkError } = await supabaseClient
+            .from('review_helpful')
+            .select('id')
+            .eq('review_id', reviewId)
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (checkError) throw checkError;
+        if (existing) throw new Error('لقد قمت بتحديد هذا التقييم كمفيد سابقاً');
+
+        const { error: insertError } = await supabaseClient
+            .from('review_helpful')
+            .insert({ review_id: reviewId, user_id: userId, created_at: new Date() });
+        if (insertError) throw insertError;
+    } catch (e) {
+        // إذا كان الخطأ هو "قيّمت سابقاً" نعيده للمستخدم، وإلا نتجاهله ونكمل بزيادة العدد
+        if (e && e.message === 'لقد قمت بتحديد هذا التقييم كمفيد سابقاً') throw e;
+        console.warn('لم يتم تسجيل الإعجاب في review_helpful (سيتم زيادة العدد فقط):', e);
+    }
+
+    // زيادة عدد الإعجابات "مفيد" في جدول reviews
+    try {
+        // أولاً: محاولة استخدام دالة RPC (زيادة ذرّية)
+        const { error: rpcError } = await supabaseClient
+            .rpc('increment_helpful_count', { review_id: reviewId });
+        if (rpcError) throw rpcError;
+    } catch (rpcErr) {
+        // إذا لم توجد دالة RPC، نقرأ العدد الحالي ثم نزيده يدوياً
+        try {
+            const { data: review, error: fetchError } = await supabaseClient
+                .from('reviews')
+                .select('helpful_count')
+                .eq('id', reviewId)
+                .single();
+            if (!fetchError && review) {
+                const { error: updateError } = await supabaseClient
+                    .from('reviews')
+                    .update({ helpful_count: (review.helpful_count || 0) + 1 })
+                    .eq('id', reviewId);
+                if (updateError) throw updateError;
+            }
+        } catch (e2) {
+            console.warn('فشل زيادة عدد "مفيد" في قاعدة البيانات:', e2);
+        }
+    }
+}
+
+async function getHelpfulCount(reviewId) {
+    const { data, error } = await supabaseClient
+        .from('review_helpful')
+        .select('id', { count: 'exact' })
+        .eq('review_id', reviewId);
+    if (error) throw error;
+    return data.length;
+}
+
+// ============================================================
+// المصادقة
+// ============================================================
+
+async function signInWithGoogle() {
+    // ============================================================
+    // 🛡️ حاسم: نحفظ "نوع الحساب المختار" فقط عند التسجيل الجديد،
+    // ولا نحفظه أطلاقاً عند تسجيل الدخول. السبب: حفظه في شاشة الدخول
+    // كان يجعل القائمة الافتراضية ("عميل") تُكتب على حساب المؤسس/
+    // المدير عند كل دخول فيتحول إلى عميل وتختفي لوحته.
+    // ============================================================
+    const activeScreen = document.querySelector('.screen.active');
+    const isRegisterFlow = !!(activeScreen && activeScreen.id === 'registerScreen');
+
+    if (isRegisterFlow) {
+        const registerAccountType = document.getElementById('registerAccountType');
+        if (!registerAccountType) { showToast('خطأ في النموذج', 'error'); return; }
+        const chosenType = registerAccountType.value;
+        // إجباري في التسجيل: لا بد من اختيار صريح
+        if (!chosenType || !['client', 'seller', 'delivery'].includes(chosenType)) {
+            showToast('يرجى اختيار نوع الحساب أولاً (عميل / بائع / مندوب)', 'warning');
+            registerAccountType.focus();
+            registerAccountType.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            registerAccountType.style.borderColor = '#c62828';
+            setTimeout(() => { registerAccountType.style.borderColor = ''; }, 2500);
+            return;
+        }
+        sessionStorage.setItem('pendingAccountType', chosenType);
+        localStorage.setItem('misarPendingAccountType', chosenType);
+    } else {
+        // دخول فقط ⇒ لا نكتب أي نوع حساب ولا نحفظه
+        sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
+    }
+    showLoading(true);
+    try {
+        // رابط عودة نظيف بدون استعلامات أو هاش (حتى لا يرفضه Supabase/Google)
+        const currentUrl = window.location.origin + window.location.pathname;
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: currentUrl,
+                queryParams: { prompt: 'select_account' }
+            }
+        });
+        if (error) {
+            console.error('❌ خطأ في تسجيل الدخول عبر Google:', error);
+            showToast(error.message || 'فشل تسجيل الدخول عبر Google', 'error');
+            showBearReaction(false);
+            showLoading(false);
+        }
+        // عند النجاح سيتم توجيه المستخدم إلى صفحة Google ثم العودة تلقائياً
+    } catch (err) {
+        console.error('❌ استثناء غير متوقع في Google login:', err);
+        showToast(err.message || 'حدث خطأ غير متوقع أثناء تسجيل الدخول عبر Google', 'error');
+        showBearReaction(false);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================================
+// تطبيق نوع الحساب المختار قبل تسجيل الدخول عبر Google
+// ============================================================
+async function applyPendingAccountType() {
+    // قراءة نوع الحساب من sessionStorage أو من الاحتياطي في localStorage
+    let pendingType = sessionStorage.getItem('pendingAccountType');
+    if (!pendingType) {
+        pendingType = localStorage.getItem('misarPendingAccountType');
+        if (pendingType) sessionStorage.setItem('pendingAccountType', pendingType);
+    }
+    if (!pendingType) return false;
+    if (!appState.user) {
+        // لا يوجد مستخدم بعد (قد تكون أول زيارة بعد إعادة التوجيه) - ننتظر حتى اكتمال الجلسة
+        return false;
+    }
+
+    // ============================================================
+    // 🛡️ خط الدفاع الحاسم:
+    // هذه الدالة مخصّصة لحالة واحدة فقط — الحساب الجديد الذي اختار
+    // نوعه قبل التسجيل. إذا كان الحساب يملك نوعاً محفوظاً مسبقاً
+    // (وخاصة founder / general_manager / seller / delivery) فلا يجوز
+    // الكتابة عليه إطلاقاً، وإلا يتحول المؤسس إلى "عميل" عند كل دخول
+    // فتختفي لوحته. نكتفي بإزالة القيمة المعلّقة والخروج.
+    // ============================================================
+    const currentType = appState.userData && appState.userData.account_type;
+    const PROTECTED_TYPES = ['founder', 'general_manager', 'seller', 'delivery', 'admin'];
+    if (currentType) {
+        // الحساب له نوع بالفعل ⇒ لا نلمسه
+        if (PROTECTED_TYPES.includes(currentType) || currentType !== 'client') {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
+        // حتى لو النوع الحالي 'client'، نتجاهل القيمة المعلّقة إن كانت
+        // نفس النوع (لا تغيير) — الكتابة بلا داعٍ خطر بلا فائدة.
+        if (pendingType === currentType) {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
+    }
+
+    try {
+        const accountType = pendingType;
+        // لا نسمح أبداً بهذه الدالة أن تُنشئ أو تُرقّي إلى مؤسس/مدير عام
+        if (accountType === 'founder' || accountType === 'general_manager' || accountType === 'admin') {
+            sessionStorage.removeItem('pendingAccountType');
+            localStorage.removeItem('misarPendingAccountType');
+            return false;
+        }
+        const existing = appState.userData && Object.keys(appState.userData).length > 0
+            ? appState.userData
+            : null;
+
+        const updates = {
+            id: appState.user.id,
+            account_type: accountType,
+            status: accountType === 'delivery' ? 'pending' : 'approved'
+        };
+        if (!existing || !existing.name) {
+            updates.name = appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || '';
+        }
+        if (!existing || !existing.governorate) {
+            updates.governorate = appState.user.user_metadata?.governorate || 'قنا';
+        }
+
+        const { error: upsertError } = await supabaseClient
+            .from('user_data')
+            .upsert(updates, { onConflict: 'id' });
+        if (upsertError) {
+            console.warn('⚠️ فشل حفظ نوع الحساب في user_data:', upsertError);
+            return false;
+        }
+
+        // تحديث user_metadata في حساب Supabase حتى يبقى النوع مثالياً بعد تسجيلات الدخول اللاحقة
+        try {
+            const { error: metaError } = await supabaseClient.auth.updateUser({
+                data: { account_type: accountType }
+            });
+            if (metaError) console.warn('⚠️ فشل تحديث user_metadata:', metaError);
+        } catch (metaErr) {
+            console.warn('⚠️ استثناء أثناء تحديث user_metadata:', metaErr);
+        }
+
+        // تحديث الحالة المحلية
+        appState.userData.account_type = accountType;
+        appState.userData.status = accountType === 'delivery' ? 'pending' : 'approved';
+        sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
+        console.log('✅ تم تطبيق نوع الحساب عبر Google:', accountType);
+        return true;
+    } catch (err) {
+        console.error('❌ خطأ في applyPendingAccountType:', err);
+        sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
+        return false;
+    }
+}
+
+async function signInWithEmail() {
+    const emailInput = document.getElementById('loginEmail');
+    const passwordInput = document.getElementById('loginPassword');
+    if (!emailInput || !passwordInput) { showToast('النموذج غير متوفر', 'error'); return; }
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) { showToast('يرجى إدخال البريد وكلمة المرور', 'warning'); return; }
+    showLoading(true);
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        showBearReaction(true);
+        showToast('تم تسجيل الدخول بنجاح', 'success');
+        emailInput.value = '';
+        passwordInput.value = '';
+    } catch (error) {
+        showToast(error.message, 'error');
+        showBearReaction(false);
+    } finally { showLoading(false); }
+}
+
+function extractErrorMessage(error) {
+    if (!error) return 'حدث خطأ غير معروف (الخطأ فارغ).';
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    if (error.error_description) return error.error_description;
+    if (error.details) return error.details;
+    if (error.code) {
+        const codeMap = {
+            'user_already_exists': 'هذا البريد الإلكتروني مسجل بالفعل.',
+            'weak_password': 'كلمة المرور ضعيفة جداً. استخدم 8 أحرف على الأقل مع أرقام ورموز.',
+            'invalid_email': 'البريد الإلكتروني غير صحيح.',
+            'email_not_confirmed': 'يجب تأكيد البريد الإلكتروني أولاً.',
+            'signup_disabled': 'التسجيل معطل حالياً، حاول لاحقاً.'
+        };
+        return codeMap[error.code] || `خطأ برمز: ${error.code}`;
+    }
+    try {
+        const str = JSON.stringify(error);
+        if (str && str !== '{}') return str;
+    } catch (e) {}
+    const props = Object.getOwnPropertyNames(error).filter(p => p !== 'stack').map(p => `${p}: ${error[p]}`).join(', ');
+    if (props) return `خطأ (${error.constructor?.name || 'Unknown'}): ${props}`;
+    return 'حدث خطأ غير معروف (لم نتمكن من استخراج رسالة).';
+}
+
+async function signUpWithEmail() {
+    const nameInput = document.getElementById('registerName');
+    const emailInput = document.getElementById('registerEmail');
+    const passwordInput = document.getElementById('registerPassword');
+    const confirmInput = document.getElementById('registerConfirmPassword');
+    const phoneInput = document.getElementById('registerPhone');
+    const addressInput = document.getElementById('registerAddress');
+    const addressNotesInput = document.getElementById('registerAddressNotes');
+    const accountTypeSelect = document.getElementById('registerAccountType');
+    const governorateSelect = document.getElementById('registerGovernorate');
+    const centerSelect = document.getElementById('registerCenter');
+
+    if (!emailInput || !passwordInput || !confirmInput || !accountTypeSelect) {
+        showToast('النموذج غير مكتمل، أعد تحميل الصفحة', 'error');
+        return;
+    }
+
+    const name = nameInput ? nameInput.value.trim() : '';
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const confirm = confirmInput.value;
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const address = addressInput ? addressInput.value.trim() : '';
+    const addressNotes = addressNotesInput ? addressNotesInput.value.trim() : '';
+    let accountType = accountTypeSelect.value;
+    let deliveryCenter = '';
+    let governorate = governorateSelect ? governorateSelect.value : '';
+    let center = centerSelect ? centerSelect.value : '';
+
+    // ===== نوع الحساب إجباري (أول تحقق — قبل أي حقل آخر) =====
+    // منع إنشاء حساب بلا اختيار صريح لنوعه (عميل / بائع / مندوب).
+    if (!accountType || !['client', 'seller', 'delivery'].includes(accountType)) {
+        showToast('يرجى اختيار نوع الحساب أولاً (عميل / بائع / مندوب)', 'warning');
+        if (accountTypeSelect) {
+            accountTypeSelect.focus();
+            accountTypeSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // إبراز الحقل بلون تحذيري مؤقت
+            accountTypeSelect.style.borderColor = '#c62828';
+            setTimeout(() => { accountTypeSelect.style.borderColor = ''; }, 2500);
+        }
+        return;
+    }
+
+    // ===== التحقق من الحقول الإجبارية =====
+    if (!governorate) { showToast('يرجى اختيار المحافظة', 'warning'); return; }
+    if (!center) { showToast('يرجى اختيار المركز / المدينة', 'warning'); return; }
+    if (!name) { showToast('يرجى إدخال الاسم', 'warning'); return; }
+    if (!phone) { showToast('يرجى إدخال رقم الهاتف', 'warning'); return; }
+    if (!email) { showToast('يرجى إدخال البريد الإلكتروني', 'warning'); return; }
+    if (!password) { showToast('يرجى إدخال كلمة المرور', 'warning'); return; }
+    if (!confirm) { showToast('يرجى تأكيد كلمة المرور', 'warning'); return; }
+    if (!address) { showToast('يرجى إدخال العنوان بالتفصيل', 'warning'); return; }
+
+    // ===== التحقق من صحة البيانات =====
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { showToast('البريد الإلكتروني غير صحيح', 'error'); return; }
+    const phoneRegex = /^01[0125][0-9]{8}$/;
+    if (!phoneRegex.test(phone)) { showToast('رقم الهاتف غير صحيح (مثال: 01012345678)', 'error'); return; }
+    if (password !== confirm) { showToast('كلمة المرور غير متطابقة', 'error'); return; }
+    if (password.length < 6) { showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning'); return; }
+
+    if (accountType === 'delivery') {
+        deliveryCenter = center;
+    }
+
+    const metadata = {
+        account_type: accountType,
+        full_name: name,
+        governorate: governorate,
+        phone: phone,
+        address: address,
+        center: center
+    };
+    if (accountType === 'delivery') {
+        metadata.center = deliveryCenter;
+        metadata.status = 'pending';
+    }
+
+    showLoading(true);
+
+    try {
+        const { data, error } = await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: {
+                data: metadata,
+                emailRedirectTo: window.location.origin
+            }
+        });
+
+        if (error) {
+            console.group('❌ خطأ Supabase أثناء التسجيل');
+            console.error('نوع الخطأ:', typeof error);
+            console.error('منشئ الخطأ:', error.constructor?.name);
+            console.dir(error, { depth: null, colors: true });
+            console.groupEnd();
+            const userMessage = extractErrorMessage(error);
+            showToast(userMessage, 'error');
+            showBearReaction(false);
+            showLoading(false);
+            return;
+        }
+
+        if (!data?.user) {
+            showToast('فشل إنشاء الحساب، يرجى المحاولة مرة أخرى', 'error');
+            showLoading(false);
+            return;
+        }
+
+        if (data.user.identities?.length === 0) {
+            showToast('هذا البريد مسجل بالفعل، يرجى تسجيل الدخول', 'warning');
+            showScreen('loginScreen');
+            showLoading(false);
+            return;
+        }
+
+        try {
+            const userDataToInsert = {
+                id: data.user.id,
+                name: name || data.user.email?.split('@')[0] || '',
+                email: email,
+                phone: phone,
+                address: address,
+                address_notes: addressNotes || '',
+                account_type: accountType,
+                governorate: governorate || 'قنا',
+                center: center || deliveryCenter || '',
+                status: accountType === 'delivery' ? 'pending' : 'approved',
+            };
+            const { error: insertError } = await supabaseClient
+                .from('user_data')
+                .upsert(userDataToInsert, { onConflict: 'id' });
+            if (insertError) {
+                // الأعمدة الجديدة (address/address_notes) قد لا تكون موجودة بعد في قاعدة البيانات —
+                // نعيد المحاولة بالأعمدة الأساسية الموجودة حتى لا يفشل التسجيل
+                console.warn('⚠️ فشل الحفظ الكامل، إعادة المحاولة بالأعمدة الأساسية:', insertError.message);
+                const baseData = {
+                    id: data.user.id,
+                    name: name || data.user.email?.split('@')[0] || '',
+                    email: email,
+                    phone: phone,
+                    account_type: accountType,
+                    governorate: governorate || 'قنا',
+                    center: center || deliveryCenter || '',
+                    status: accountType === 'delivery' ? 'pending' : 'approved',
+                };
+                const { error: retryError } = await supabaseClient
+                    .from('user_data')
+                    .upsert(baseData, { onConflict: 'id' });
+                if (retryError) {
+                    console.warn('⚠️ فشل إدراج بيانات المستخدم في user_data:', retryError);
+                    showToast('تم إنشاء الحساب ولكن فشل حفظ البيانات الشخصية، يمكنك تحديثها لاحقاً من الملف الشخصي.', 'warning');
+                } else {
+                    console.log('✅ تم حفظ البيانات الأساسية في user_data (بدون العنوان التفصيلي).');
+                    if (address) showToast('تم الحفظ بدون العنوان التفصيلي — نفّذ ملف add_user_address_columns.sql في Supabase لتفعيله.', 'info');
+                }
+            } else {
+                console.log('✅ تم حفظ بيانات المستخدم في user_data بنجاح.');
+            }
+        } catch (insertErr) {
+            console.warn('⚠️ خطأ غير متوقع أثناء إدراج user_data:', insertErr);
+        }
+
+        try {
+            const { error: signInError } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (signInError) {
+                showToast('تم إنشاء الحساب ولكن فشل تسجيل الدخول التلقائي. سجل دخول يدوياً.', 'info');
+                showScreen('loginScreen');
+            } else {
+                showToast('تم إنشاء الحساب وتسجيل الدخول بنجاح!', 'success');
+                showBearReaction(true);
+            }
+        } catch (autoLoginErr) {
+            console.warn('فشل تسجيل الدخول التلقائي:', autoLoginErr);
+            showToast('تم التسجيل، يرجى تسجيل الدخول', 'info');
+            showScreen('loginScreen');
+        }
+
+        if (accountType === 'founder') {
+            setTimeout(() => initFounderSettings(), 2000);
+        }
+
+    } catch (unexpectedError) {
+        console.error('❌ خطأ غير متوقع أثناء التسجيل:', unexpectedError);
+        let msg = 'حدث خطأ غير متوقع. حاول مرة أخرى.';
+        if (unexpectedError.message) msg = unexpectedError.message;
+        else if (typeof unexpectedError === 'string') msg = unexpectedError;
+        showToast(msg, 'error');
+        showBearReaction(false);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function logout(showConfirm = true) {
+    if (showConfirm && !confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
+    showLoading(true);
+    try {
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) throw error;
+        sessionStorage.removeItem('pendingAccountType');
+        localStorage.removeItem('misarPendingAccountType');
+        // مسح ذاكرة الدور المحلية حتى لا يرثها حساب آخر على نفس الجهاز
+        try { localStorage.removeItem('misarRoleCache'); } catch (e) { /* تجاهل */ }
+        appState.user = null;
+        appState.userData = {};
+        toggleLoginMenu(false);
+        toggleSellerMenuItem(false);
+        toggleDeliveryMenuItem(false);
+        toggleFounderMenuItem(false);
+        toggleGeneralManagerMenuItem(false);
+        resetMisarFounderModeOnLogout();
+        updateUserInfo(true);
+        await loadCart();
+        await updateCartBadgeFromDB();
+        showScreen('homeScreen');
+        showToast('تم تسجيل الخروج', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally { showLoading(false); }
+}
+
+async function switchAccount() { if (appState.user) await logout(false); showScreen('loginScreen'); }
+function confirmLogout() { logout(true); }
+
+function toggleLoginMenu(isLoggedIn) {
+    const loginItem = document.getElementById('loginMenuItem');
+    const logoutItem = document.getElementById('logoutMenuItem');
+    if (loginItem) loginItem.style.display = isLoggedIn ? 'none' : 'flex';
+    if (logoutItem) logoutItem.style.display = isLoggedIn ? 'flex' : 'none';
+}
+function toggleSellerMenuItem(isSeller) {
+    const sellerItem = document.getElementById('sellerDashboardMenuItem');
+    if (sellerItem) sellerItem.style.display = isSeller ? 'flex' : 'none';
+    const sellerExtra = document.getElementById('sellerExtraFields');
+    if (sellerExtra) sellerExtra.style.display = isSeller ? 'block' : 'none';
+}
+function toggleDeliveryMenuItem(isDelivery) {
+    const deliveryItem = document.getElementById('deliveryDashboardMenuItem');
+    if (deliveryItem) deliveryItem.style.display = isDelivery ? 'flex' : 'none';
+}
+function toggleFounderMenuItem(isFounder) {
+    const founderItem = document.getElementById('founderDashboardMenuItem');
+    if (founderItem) founderItem.style.display = isFounder ? 'flex' : 'none';
+}
+function toggleGeneralManagerMenuItem(isGeneralManager) {
+    const gmItem = document.getElementById('generalManagerDashboardMenuItem');
+    if (gmItem) gmItem.style.display = isGeneralManager ? 'flex' : 'none';
+    const profile = isGeneralManager && appState.user && typeof misarGmProfile === 'function'
+        ? misarGmProfile(appState.user.id)
+        : null;
+    const label = profile?.label?.trim() || '';
+    const publicTitle = label
+        ? (/^لوحة(?:\s|$)/.test(label) ? label : `لوحة ${label}`)
+        : 'لوحة المدير العام';
+    const menuTitle = gmItem?.querySelector('.menu-text');
+    if (menuTitle) menuTitle.textContent = publicTitle;
+    const dashboardTitle = document.querySelector('#generalManagerDashboardScreen .app-header h1');
+    if (dashboardTitle) dashboardTitle.textContent = publicTitle;
+}
+
+// توافق خلفي: إعادة الاقتراحات لشكلها الافتراضي عند تسجيل الخروج
+function resetMisarFounderModeOnLogout() {
+    if (typeof setMisarFounderMode === 'function') setMisarFounderMode(false);
+}
+
+// ============================================================
+// تحميل بيانات المستخدم
+// ============================================================
+async function loadUserData() {
+    if (!appState.user) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('user_data')
+            .select('*')
+            .eq('id', appState.user.id)
+            .maybeSingle();
+
+        // ============================================================
+        // ذاكرة الدور المحلية (Anti-Hide Guard):
+        // لو فشلت قراءة user_data لسبب مؤقت (RLS/شبكة) لا يجوز أن تختفي
+        // أي لوحة (بائع / مندوب / مؤسس / مدير عام). نحفظ آخر دور معروف
+        // محلياً (أي دور غير 'client') ونستخدمه كاحتياط أخير.
+        // لا نرقّي حساب عميل إلى دور لم يُرَ من قبل على هذا الجهاز.
+        // ============================================================
+        const PROTECTED_TYPES = ['founder', 'admin', 'general_manager'];
+        // الأدوار التي لها لوحة ويجوز تذكّرها محلياً
+        const DASHBOARD_TYPES = ['seller', 'delivery', 'founder', 'admin', 'general_manager'];
+        function readCachedRole() {
+            try {
+                const raw = localStorage.getItem('misarRoleCache');
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (obj && obj.id === appState.user.id && DASHBOARD_TYPES.includes(obj.account_type)) {
+                    return obj;
+                }
+            } catch (e) { /* تجاهل */ }
+            return null;
+        }
+        function writeCachedRole(accountType, status) {
+            try {
+                if (DASHBOARD_TYPES.includes(accountType)) {
+                    localStorage.setItem('misarRoleCache', JSON.stringify({
+                        id: appState.user.id,
+                        account_type: accountType,
+                        status: status || 'approved'
+                    }));
+                } else if (accountType === 'client') {
+                    // حساب عميل صريح ⇒ لا داعي لاحتياطي (نتجنّب إظهار لوحة قديمة بالخطأ)
+                    localStorage.removeItem('misarRoleCache');
+                }
+            } catch (e) { /* تجاهل */ }
+        }
+
+        const defaultData = {
+            id: appState.user.id,
+            name: appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || '',
+            email: appState.user.email || '',
+            phone: appState.user.user_metadata?.phone || '',
+            address: appState.user.user_metadata?.address || '',
+            address_notes: appState.user.user_metadata?.address_notes || '',
+            governorate: appState.user.user_metadata?.governorate || 'قنا',
+            center: appState.user.user_metadata?.center || '',
+            village: appState.user.user_metadata?.village || '',
+            image_url: appState.user.user_metadata?.avatar_url || '',
+            account_type: (function () {
+                // الأولوية: ذاكرة الدور المحلي (بائع/مندوب/مؤسس...) > user_metadata > client
+                const cached = readCachedRole();
+                const meta = appState.user.user_metadata?.account_type;
+                if (cached && DASHBOARD_TYPES.includes(cached.account_type)) return cached.account_type;
+                return meta || 'client';
+            })(),
+            status: (function () {
+                // لو عندنا دور متذكّر محلياً، نستخدم حالته (approved) حتى لا يختفي
+                // العنصر بسبب status='pending'/'suspended' عند فشل القراءة.
+                const cached = readCachedRole();
+                return cached ? (cached.status || 'approved') : (appState.user.user_metadata?.status || 'approved');
+            })()
+        };
+
+        if (error) {
+            const isPermissionIssue = error?.code === '42501' || /permission denied|does not exist|not exist|table .* not found/i.test(String(error?.message || ''));
+            console.warn('تم استخدام بيانات محلية بدلاً من user_data بسبب:', error?.message || error);
+            appState.userData = defaultData;
+            // لا نكتب في قاعدة البيانات هنا أبداً — الاعتماد على القراءة أو الذاكرة المحلية.
+            // لا نكتب أي بيانات عند وجود خطأ قراءة. الكتابة هنا كانت
+            // تستبدل صف المستخدم بقيم افتراضية (account_type='client')
+            // وتُفقد الصلاحيات. الاعتماد الآن على القراءة فقط.
+            if (isPermissionIssue) {
+                console.warn('لا صلاحية لقراءة user_data؛ سيتم استخدام بيانات الجلسة فقط.');
+            }
+        } else if (data) {
+            appState.userData = data;
+            // حفظ الدور المحمي محلياً — حتى لو فشل أي قراءة لاحقة لا تختفي اللوحة.
+            writeCachedRole(data.account_type, data.status);
+        } else {
+            // مهم جداً: data === null هنا تعني أحد أمرين:
+            //   (أ) الصف غير موجود فعلاً  → يجوز إنشاؤه.
+            //   (ب) الصف موجود لكن RLS تمنع قراءته → يجب عدم الكتابة إطلاقاً.
+            //     لأن upsert(account_type='client') كان يستبدل صف المؤسس
+            //     ويحوّل صلاحياته إلى عميل عند كل تسجيل دخول.
+            // لذلك نتحقق أولاً هل الصف موجود (بدون كتابة)، وإن كان موجوداً
+            // نكتفي بالبيانات المحلية ولا نلمس قاعدة البيانات.
+            let rowExists = false;
+            try {
+                const { count } = await supabaseClient
+                    .from('user_data')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('id', appState.user.id);
+                rowExists = (count || 0) > 0;
+            } catch (countErr) {
+                // لو فشل العدّ لأي سبب، نفترض وجود الصف للأمان (لا نكتب).
+                rowExists = true;
+            }
+
+            if (!rowExists) {
+                try {
+                    await supabaseClient.from('user_data').insert(defaultData);
+                } catch (insertErr) {
+                    console.warn('تعذر إنشاء سجل user_data، سيتم العمل مع بيانات محلية:', insertErr);
+                }
+            } else {
+                console.warn('صف المستخدم موجود لكنه غير مقروء (RLS) — لن تتم أي كتابة تجنّباً لإتلاف البيانات.');
+            }
+            appState.userData = defaultData;
+        }
+
+        if (!appState.userData || Object.keys(appState.userData).length === 0) {
+            appState.userData = defaultData;
+        }
+
+        if (appState.userData) {
+            appState.location = {
+                governorate: appState.userData.governorate || 'قنا',
+                center: appState.userData.center || '',
+                village: appState.userData.village || ''
+            };
+        }
+
+        updateUserInfo();
+        updateWelcomeLocation();
+        updateProfileLocation();
+
+        const isApprovedSeller = appState.userData.account_type === 'seller' && (appState.userData.status === 'approved' || !appState.userData.status);
+        const isApprovedDelivery = appState.userData.account_type === 'delivery' && (appState.userData.status === 'approved' || !appState.userData.status);
+        const isFounder = appState.userData.account_type === 'founder';
+
+        // تشخيص مرئي (يظهر في الـ Console دائماً، وعلى الشاشة لحساب المؤسس)
+        window.__founderDiag = {
+            account_type: appState.userData.account_type,
+            status: appState.userData.status,
+            source: (error ? 'defaultData(فشلت القراءة)' : (data ? 'user_data(من قاعدة البيانات)' : 'defaultData(الصف غير موجود)')),
+            errorCode: error ? (error.code || error.message) : null,
+            metaAccountType: appState.user.user_metadata?.account_type || null,
+            isFounder: isFounder,
+            rowFound: (typeof data !== 'undefined' && data) ? true : false
+        };
+        console.log('🔍 تشخيص دور الحساب:', window.__founderDiag);
+
+        // إذا كان الحساب له دور لوحة (بائع/مندوب/مؤسس/مدير عام) لكن النوع
+        // لم يُقرأ صحيحاً ⇒ نُظهر تنبيهاً واضحاً بالسبب والحل بدل أن تختفي
+        // اللوحة صامتة.
+        try {
+            const em = (appState.user.email || '').toLowerCase();
+            const WATCH_EMAILS = ['sa3dgelany@gmail.com', 'aljylanym268@gmail.com'];
+            const cachedRole = readCachedRole();
+            const hasDashboardRole = isFounder || isApprovedSeller || isApprovedDelivery || !!cachedRole;
+            if (WATCH_EMAILS.includes(em) && !hasDashboardRole) {
+                if (typeof showFounderDiagBanner === 'function') {
+                    showFounderDiagBanner(window.__founderDiag);
+                }
+            }
+        } catch (e) { /* تجاهل */ }
+
+        toggleSellerMenuItem(isApprovedSeller);
+        toggleDeliveryMenuItem(isApprovedDelivery);
+        toggleFounderMenuItem(isFounder);
+
+        // تفعيل وضع المؤس في المساعد الذكي MISAR AI (سياق واقتراحات إدارية)
+        if (typeof setMisarFounderMode === 'function') setMisarFounderMode(isFounder);
+
+        if (isApprovedSeller) {
+            if (typeof addSellerStoreTools === 'function') {
+                setTimeout(() => addSellerStoreTools(), 500);
+            }
+        }
+        if (isFounder) {
+            await initFounderSettings();
+            await loadFounderStats();
+            await loadPendingDeliveries();
+        }
+
+        // ===== نظام المدير العام =====
+        // مهم: نحمّل الصلاحيات دائماً (يحتاجها المدير العام لعرض تبويباته).
+        if (typeof misarLoadGmSettings === 'function') {
+            await misarLoadGmSettings();
+        }
+        // قائمة المدراء يحتاجها المؤسس فقط (لعرض اللوحة) — نتجنب
+        // طلبها لكل مستخدم حفاظاً على الخصوصية وتقليل الطلبات.
+        if (isFounder) {
+            if (typeof misarLoadGmList === 'function') {
+                await misarLoadGmList();
+            }
+            if (typeof misarRenderGmList === 'function') {
+                try { misarRenderGmList(); } catch (e) { /* عنصر الجدول غير موجود بعد */ }
+            }
+        }
+        const isGeneralManager = typeof misarIsGeneralManager === 'function' && misarIsGeneralManager();
+        toggleGeneralManagerMenuItem(isGeneralManager);
+        if (isGeneralManager) updateUserInfo();
+
+        await updateCartBadgeFromDB();
+        await loadUnreadNotificationsCount();
+        setupRealtimeSubscriptions();
+
+    } catch (error) {
+        console.error('loadUserData error:', error);
+        if (!appState.userData || Object.keys(appState.userData).length === 0) {
+            appState.userData = {
+                id: appState.user.id,
+                name: appState.user.email?.split('@')[0] || 'مستخدم',
+                account_type: 'client',
+                status: 'approved'
+            };
+            updateUserInfo();
+        }
+    }
+}
+
+// ============================================================
+// تحديث معلومات المستخدم في الواجهة
+// ============================================================
+function updateUserInfo(isGuest = false) {
+    const welcomeName = document.getElementById('welcomeName');
+    const welcomeAvatar = document.getElementById('welcomeAvatar');
+    const profileName = document.getElementById('profileName');
+    const profileEmail = document.getElementById('profileEmail');
+    const profileAvatar = document.getElementById('profileAvatar');
+    const editAvatarImg = document.getElementById('editAvatarImg');
+    const editAvatarIcon = document.getElementById('editAvatarIcon');
+
+    if (isGuest || !appState.user) {
+        if (welcomeName) welcomeName.textContent = 'مرحباً، زائر';
+        if (welcomeAvatar) welcomeAvatar.innerHTML = '<i class="fas fa-user"></i>';
+        if (profileName) profileName.textContent = 'زائر';
+        if (profileEmail) profileEmail.textContent = 'غير مسجل';
+        if (profileAvatar) profileAvatar.innerHTML = '<i class="fas fa-user"></i>';
+        if (editAvatarImg) { editAvatarImg.style.display = 'none'; if (editAvatarIcon) editAvatarIcon.style.display = 'block'; }
+    } else {
+        const name = appState.userData.name || appState.user.user_metadata?.full_name || appState.user.email?.split('@')[0] || 'مستخدم';
+        const email = appState.user.email;
+        const avatar = appState.userData.image_url || appState.user.user_metadata?.avatar_url;
+        const managerLabel = appState.userData.account_type === 'general_manager' &&
+            typeof misarGmProfile === 'function'
+            ? misarGmProfile(appState.user.id).label
+            : '';
+
+        const setDisplayName = (element, prefix) => {
+            if (!element) return;
+            element.textContent = prefix + name;
+            if (managerLabel) {
+                const label = document.createElement('span');
+                label.className = 'gm-public-label';
+                label.textContent = managerLabel;
+                element.appendChild(label);
+            }
+        };
+        setDisplayName(welcomeName, 'مرحباً، ');
+        setDisplayName(profileName, '');
+        if (profileEmail) profileEmail.textContent = email;
+
+        if (avatar) {
+            const imgHtml = `<img src="${avatar}" alt="صورة المستخدم" onerror="this.onerror=null; this.parentElement.innerHTML='<i class=\"fas fa-user\"></i>';">`;
+            if (welcomeAvatar) welcomeAvatar.innerHTML = imgHtml;
+            if (profileAvatar) profileAvatar.innerHTML = imgHtml;
+            if (editAvatarImg) {
+                editAvatarImg.src = avatar;
+                editAvatarImg.style.display = 'block';
+                if (editAvatarIcon) editAvatarIcon.style.display = 'none';
+                editAvatarImg.onerror = function() {
+                    this.style.display = 'none';
+                    if (editAvatarIcon) editAvatarIcon.style.display = 'block';
+                };
+            }
+        } else {
+            if (welcomeAvatar) welcomeAvatar.innerHTML = '<i class="fas fa-user"></i>';
+            if (profileAvatar) profileAvatar.innerHTML = '<i class="fas fa-user"></i>';
+            if (editAvatarImg) { editAvatarImg.style.display = 'none'; if (editAvatarIcon) editAvatarIcon.style.display = 'block'; }
+        }
+
+        const editName = document.getElementById('editName');
+        if (editName) editName.value = appState.userData.name || '';
+        const editPhone = document.getElementById('editPhone');
+        if (editPhone) editPhone.value = appState.userData.phone || '';
+        const editCenter = document.getElementById('editCenter');
+        if (editCenter) editCenter.value = appState.userData.center || '';
+        const editUsername = document.getElementById('editUsername');
+        if (editUsername) editUsername.value = appState.userData.username || '';
+        const editBio = document.getElementById('editBio');
+        if (editBio) editBio.value = appState.userData.bio || '';
+    }
+}
+
+// ============================================================
+// الموقع
+// ============================================================
+async function saveLocation() {
+    const governorateSelect = document.getElementById('governorateSelect');
+    const centerSelect = document.getElementById('centerSelect');
+
+    if (!centerSelect) { showToast('النموذج غير متوفر', 'error'); return; }
+
+    const governorate = governorateSelect ? governorateSelect.value : 'قنا';
+    const center = centerSelect.value;
+
+    if (!center) { showToast('يرجى اختيار المركز', 'warning'); return; }
+
+    appState.location = { governorate, center };
+
+    if (appState.user) {
+        try {
+            const { error } = await supabaseClient
+                .from('user_data')
+                .upsert(withProtectedRole({ governorate, center }), { onConflict: 'id' });
+            if (error) throw error;
+            appState.userData.governorate = governorate;
+            appState.userData.center = center;
+            appState.userData.village = '';
+        } catch (error) {
+            showToast('فشل حفظ الموقع في قاعدة البيانات', 'error');
+            console.error(error);
+            return;
+        }
+    } else {
+        localStorage.setItem('misarUserLocation', JSON.stringify(appState.location));
+    }
+
+    updateWelcomeLocation();
+    updateProfileLocation();
+    showToast('تم حفظ موقعك بنجاح', 'success');
+
+    if (appState.previousScreen === 'profileScreen') {
+        showScreen('profileScreen');
+    } else {
+        showScreen('homeScreen');
+    }
+}
+
+function openLocationSettings() {
+    showScreen('locationScreen');
+    setTimeout(() => {
+        const loc = appState.user ? appState.userData : appState.location;
+        if (!loc) return;
+        const center = loc.center || '';
+        const centerSelect = document.getElementById('centerSelect');
+        if (centerSelect) centerSelect.value = center;
+    }, 150);
+}
+
+function updateWelcomeLocation() {
+    const el = document.getElementById('welcomeLocation');
+    if (!el) return;
+    const loc = appState.user ? appState.userData : appState.location;
+    if (loc && loc.center) {
+        const parts = [loc.governorate || 'قنا', loc.center, loc.village || ''].filter(Boolean);
+        el.textContent = `📍 ${parts.join(' - ')}`;
+    } else {
+        el.textContent = '📍 موقعك: غير محدد';
+    }
+}
+
+function updateProfileLocation() {
+    const el = document.getElementById('profileLocation');
+    if (!el) return;
+    const loc = appState.user ? appState.userData : appState.location;
+    if (loc && loc.center) {
+        const parts = [loc.governorate || 'قنا', loc.center, loc.village || ''].filter(Boolean);
+        el.textContent = `المنطقة: ${parts.join(' - ')}`;
+    } else {
+        el.textContent = 'المنطقة: غير محددة';
+    }
+}
+
+// ============================================================
+// حفظ الملف الشخصي
+// ============================================================
+// ============================================================
+// حارس الدور: أي upsert على user_data يجب أن يحمل account_type
+// و status الحاليين معه، وإلا قد يُكتب الصف جزئياً ويُفقد الدور
+// (وهذا هو سبب اختفاء اللوحات بعد "التعديلات").
+// لا نرقّي أبداً عميلاً إلى دور محمي — نحمل القيمة الحالية فقط.
+// ============================================================
+function withProtectedRole(payload) {
+    const out = Object.assign({ id: appState.user.id }, payload || {});
+    const currentType = appState.userData && appState.userData.account_type;
+    if (currentType) {
+        out.account_type = currentType;
+        out.status = (appState.userData.status) || 'approved';
+    } else {
+        // احتياط أخير من الذاكرة المحلية لحماية الأدوار المحمية
+        try {
+            const raw = localStorage.getItem('misarRoleCache');
+            const cached = raw ? JSON.parse(raw) : null;
+            if (cached && cached.id === appState.user.id &&
+                ['founder', 'admin', 'general_manager'].includes(cached.account_type)) {
+                out.account_type = cached.account_type;
+                out.status = cached.status || 'approved';
+            }
+        } catch (e) { /* تجاهل */ }
+    }
+    return out;
+}
+window.withProtectedRole = withProtectedRole;
+
+async function saveProfile() {
+    if (!appState.user) return showToast('يجب تسجيل الدخول أولاً', 'warning');
+    const editName = document.getElementById('editName');
+    const editPhone = document.getElementById('editPhone');
+    if (!editName || !editPhone) { showToast('النموذج غير مكتمل', 'error'); return; }
+    const name = editName.value.trim();
+    const phone = editPhone.value.trim();
+    const editUsername = document.getElementById('editUsername');
+    const editBio = document.getElementById('editBio');
+    const username = editUsername ? editUsername.value.trim() : null;
+    const bio = editBio ? editBio.value.trim() : null;
+    const updates = { id: appState.user.id };
+    if (name) updates.name = name;
+    if (phone) updates.phone = phone;
+    if (appState.userData.account_type === 'seller') {
+        if (username) {
+            const { data: existing } = await supabaseClient.from('user_data').select('id').eq('username', username).neq('id', appState.user.id).maybeSingle();
+            if (existing) { showToast('اسم المستخدم مستخدم بالفعل', 'error'); return; }
+            updates.username = username;
+        }
+        if (bio) updates.bio = bio;
+    }
+    if (Object.keys(updates).length === 1) return showToast('لا توجد تغييرات', 'info');
+    showLoading(true);
+    try {
+        const { error } = await supabaseClient.from('user_data').upsert(withProtectedRole(updates), { onConflict: 'id' });
+        if (error) throw error;
+        await loadUserData();
+        showToast('تم حفظ التغييرات', 'success');
+        goBack();
+        if (appState.userData.account_type === 'seller') {
+            if (typeof addSellerStoreTools === 'function') {
+                addSellerStoreTools();
+                if (typeof updateStoreTools === 'function') updateStoreTools();
+            }
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally { showLoading(false); }
+}
+
+// ============================================================
+// رفع الصورة الشخصية
+// ============================================================
+document.getElementById('avatarUpload')?.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file || !appState.user) return;
+    if (!file.type.startsWith('image/')) return showToast('يرجى اختيار صورة', 'warning');
+    if (file.size > 5 * 1024 * 1024) return showToast('الحد الأقصى 5 ميجابايت', 'warning');
+
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        const preview = document.getElementById('editAvatarImg');
+        if (preview) {
+            preview.src = ev.target.result;
+            preview.style.display = 'block';
+            document.getElementById('editAvatarIcon').style.display = 'none';
+        }
+    };
+    reader.readAsDataURL(file);
+
+    showLoading(true);
+    try {
+        const compressed = await compressImage(file, 512, 512, 0.8);
+        const ext = file.name.split('.').pop();
+        const path = `avatars/${appState.user.id}-${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabaseClient.storage.from('user-images').upload(path, compressed);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabaseClient.storage.from('user-images').getPublicUrl(path);
+
+        const { error: updateError } = await supabaseClient
+            .from('user_data')
+            .upsert(withProtectedRole({ image_url: publicUrl }), { onConflict: 'id' });
+        if (updateError) throw updateError;
+
+        appState.userData.image_url = publicUrl;
+        updateUserInfo();
+        showToast('تم رفع الصورة الشخصية بنجاح', 'success');
+    } catch (err) {
+        showToast(err.message, 'error');
+        console.error(err);
+    } finally { showLoading(false); }
+});
+
+// ============================================================
+// إعدادات المؤسس (رؤية الصفحة)
+// ============================================================
+async function loadGlobalFounderVisibility() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('founder_settings')
+            .select('page_visible')
+            .eq('id', 1)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (data && data.page_visible !== undefined) {
+            appState.founderPageVisible = data.page_visible;
+            localStorage.setItem('founder_page_visible', String(data.page_visible));
+            console.log('✅ تم تحميل رؤية المؤسس من DB:', appState.founderPageVisible);
+        } else {
+            const saved = localStorage.getItem('founder_page_visible');
+            appState.founderPageVisible = saved !== null ? saved === 'true' : true;
+        }
+    } catch (error) {
+        console.warn('⚠️ فشل تحميل إعدادات المؤسس من DB، استخدام localStorage:', error);
+        const saved = localStorage.getItem('founder_page_visible');
+        // احتياطي آمن: لو مفيش قيمة محفوظة، اعتبرها مخفية (منع فتحها بالغلط)
+        appState.founderPageVisible = saved !== null ? saved === 'true' : false;
+    }
+
+    const toggleSwitch = document.getElementById('toggleFounderPage');
+    if (toggleSwitch && appState.user && appState.userData.account_type === 'founder') {
+        toggleSwitch.checked = appState.founderPageVisible;
+    }
+}
+
+async function handleToggleChange(e) {
+    const newValue = e.target.checked;
+    appState.founderPageVisible = newValue;
+    localStorage.setItem('founder_page_visible', String(newValue));
+
+    try {
+        const { error } = await supabaseClient
+            .from('founder_settings')
+            .upsert({ id: 1, page_visible: newValue, updated_at: new Date() });
+
+        if (error) throw error;
+        showToast(newValue ? '✅ تم إظهار صفحة المؤسس للجميع' : '✅ تم إخفاء صفحة المؤسس عن الجميع', 'success');
+    } catch (error) {
+        appState.founderPageVisible = !newValue;
+        localStorage.setItem('founder_page_visible', String(!newValue));
+        const toggleSwitch = document.getElementById('toggleFounderPage');
+        if (toggleSwitch) toggleSwitch.checked = !newValue;
+        showToast('❌ فشل حفظ الإعداد في قاعدة البيانات: ' + error.message, 'error');
+        console.error('❌ فشل upsert founder_settings:', error);
+    }
+}
+
+async function initFounderSettings() {
+    await loadGlobalFounderVisibility();
+    const toggleSwitch = document.getElementById('toggleFounderPage');
+    if (toggleSwitch && appState.user && appState.userData.account_type === 'founder') {
+        toggleSwitch.removeEventListener('change', handleToggleChange);
+        toggleSwitch.addEventListener('change', handleToggleChange);
+    }
+}
+
+// ============================================================
+// دوال المؤسس (إحصائيات المشاركات والمشاهدات)
+// ============================================================
+async function loadFounderStats() {
+    try {
+        const { data, error } = await supabaseClient.from('founder_views').select('count').eq('id',1).single();
+        if (!error && data) appState.founderViews = data.count || 0;
+        else appState.founderViews = parseInt(localStorage.getItem('founder_views') || '0');
+    } catch(e) { appState.founderViews = parseInt(localStorage.getItem('founder_views') || '0'); }
+    const viewsEl = document.getElementById('founderViewsCount');
+    if (viewsEl) viewsEl.textContent = appState.founderViews;
+    try {
+        const { data, error } = await supabaseClient.from('founder_shares').select('count');
+        if (!error && data) {
+            const total = data.reduce((sum, s) => sum + (s.count || 0), 0);
+            const sharesEl = document.getElementById('founderSharesTotal');
+            if (sharesEl) sharesEl.textContent = total;
+        } else {
+            let total = 0;
+            ['whatsapp','facebook','twitter','copy'].forEach(t => {
+                total += parseInt(localStorage.getItem(`share_${t}`) || '0');
+            });
+            const sharesEl = document.getElementById('founderSharesTotal');
+            if (sharesEl) sharesEl.textContent = total;
+        }
+    } catch(e) {
+        let total = 0;
+        ['whatsapp','facebook','twitter','copy'].forEach(t => {
+            total += parseInt(localStorage.getItem(`share_${t}`) || '0');
+        });
+        const sharesEl = document.getElementById('founderSharesTotal');
+        if (sharesEl) sharesEl.textContent = total;
+    }
+}
+async function refreshFounderStats() { await loadFounderStats(); showToast('تم تحديث الإحصائيات', 'success'); }
+async function trackFounderView() {
+    try { await supabaseClient.rpc('increment_founder_view'); } catch(e) {
+        let current = parseInt(localStorage.getItem('founder_views') || '0');
+        current++;
+        localStorage.setItem('founder_views', current);
+        appState.founderViews = current;
+    }
+    const viewsEl = document.getElementById('founderViewsCount');
+    if (viewsEl) viewsEl.textContent = appState.founderViews;
+}
+async function trackShare(shareType) {
+    try {
+        const { data, error } = await supabaseClient.from('founder_shares').select('count').eq('share_type', shareType).maybeSingle();
+        if (error) throw error;
+        let newCount = 1;
+        if (data && data.count !== undefined) {
+            newCount = data.count + 1;
+            await supabaseClient.from('founder_shares').update({ count: newCount, updated_at: new Date() }).eq('share_type', shareType);
+        } else {
+            await supabaseClient.from('founder_shares').insert({ share_type: shareType, count: 1 });
+        }
+        const span = document.getElementById(`shareCount_${shareType}`);
+        if (span) span.textContent = newCount;
+        const { data: allShares } = await supabaseClient.from('founder_shares').select('count');
+        if (allShares) {
+            const total = allShares.reduce((sum, s) => sum + (s.count || 0), 0);
+            const sharesEl = document.getElementById('founderSharesTotal');
+            if (sharesEl) sharesEl.textContent = total;
+        }
+    } catch (err) {
+        console.warn('فشل تحديث قاعدة بيانات المشاركات، استخدام localStorage', err);
+        let localCount = parseInt(localStorage.getItem(`share_${shareType}`) || '0');
+        localCount++;
+        localStorage.setItem(`share_${shareType}`, localCount);
+        const span = document.getElementById(`shareCount_${shareType}`);
+        if (span) span.textContent = localCount;
+        let total = 0;
+        ['whatsapp','facebook','twitter','copy'].forEach(t => {
+            total += parseInt(localStorage.getItem(`share_${t}`) || '0');
+        });
+        const sharesEl = document.getElementById('founderSharesTotal');
+        if (sharesEl) sharesEl.textContent = total;
+    }
+}
+async function loadShareCounts() {
+    try {
+        const { data, error } = await supabaseClient.from('founder_shares').select('share_type, count');
+        if (error) throw error;
+        if (data && data.length) {
+            data.forEach(item => {
+                const span = document.getElementById(`shareCount_${item.share_type}`);
+                if (span) span.textContent = item.count;
+            });
+            const total = data.reduce((sum, s) => sum + (s.count || 0), 0);
+            const sharesEl = document.getElementById('founderSharesTotal');
+            if (sharesEl) sharesEl.textContent = total;
+        } else {
+            ['whatsapp', 'facebook', 'twitter', 'copy'].forEach(type => {
+                const count = localStorage.getItem(`share_${type}`) || 0;
+                const span = document.getElementById(`shareCount_${type}`);
+                if (span) span.textContent = count;
+            });
+            let total = 0;
+            ['whatsapp','facebook','twitter','copy'].forEach(t => {
+                total += parseInt(localStorage.getItem(`share_${t}`) || '0');
+            });
+            const sharesEl = document.getElementById('founderSharesTotal');
+            if (sharesEl) sharesEl.textContent = total;
+        }
+    } catch (err) { console.warn(err); }
+}
+function getFounderShareLink() {
+    const founderUsername = 'mohamed_saad';
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?founder=${founderUsername}`;
+}
+async function shareFounderPage(method) {
+    await loadGlobalFounderVisibility();
+    if (!appState.founderPageVisible) {
+        showToast('صفحة المؤسس مخفية حالياً من قبل الإدارة، لا يمكن مشاركتها', 'warning');
+        return;
+    }
+    const link = getFounderShareLink();
+    const text = `تعرف على مؤسس شركة Misar Systems المهندس محمد سعد وقصة نجاحه من خلال هذا الرابط:`;
+    let shareUrl = '';
+    switch(method) {
+        case 'whatsapp': shareUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + link)}`; window.open(shareUrl, '_blank'); break;
+        case 'facebook': shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(text)}`; window.open(shareUrl, '_blank'); break;
+        case 'twitter': shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`; window.open(shareUrl, '_blank'); break;
+        case 'copy': navigator.clipboard.writeText(link).then(() => showToast('تم نسخ رابط صفحة المؤسس بنجاح!', 'success')).catch(() => showToast('فشل نسخ الرابط، حاول يدوياً', 'error')); break;
+    }
+    trackShare(method);
+}
+
+async function openFounderProfile() {
+    // مهم: تحميل حالة الرؤية مباشرة من قاعدة البيانات قبل الفتح
+    // (حتى لا تُفتح الصفحة بالقيمة الافتراضية قبل تحميل الإعداد)
+    if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+        await loadGlobalFounderVisibility();
+    }
+    if (!appState.founderPageVisible) {
+        showToast('⛔ صفحة المؤسس غير متاحة حالياً', 'warning');
+        return;
+    }
+    closeChatbot();
+    const founderScreen = document.getElementById('founderProfileScreen');
+    if (founderScreen) founderScreen.classList.add('active');
+    loadShareCounts();
+    const shareLinkSpan = document.getElementById('founderShareLink');
+    if (shareLinkSpan) shareLinkSpan.textContent = getFounderShareLink();
+    trackFounderView();
+}
+
+function closeFounderProfile() {
+    const founderScreen = document.getElementById('founderProfileScreen');
+    if (founderScreen) founderScreen.classList.remove('active');
+    // لو الملف الشخصي الكامل مفتوح فوقها، اقفله معها
+    closeFounderFullProfile();
+    openChatbot();
+}
+
+// ============================================================
+// الملف الشخصي الكامل للمؤس (يُفتح بالضغط على الاسم فقط)
+// ============================================================
+function openFounderFullProfile() {
+    const bioScreen = document.getElementById('founderBioScreen');
+    if (!bioScreen) return;
+    bioScreen.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeFounderFullProfile() {
+    const bioScreen = document.getElementById('founderBioScreen');
+    if (!bioScreen) return;
+    bioScreen.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// إغلاق الملف الشخصي بضغطة Escape
+if (!window.__misarFounderBioEscBound) {
+    window.__misarFounderBioEscBound = true;
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            const bioScreen = document.getElementById('founderBioScreen');
+            if (bioScreen && bioScreen.classList.contains('active')) {
+                closeFounderFullProfile();
+            }
+        }
+    });
+}
+function openImageModal(imageSrc) {
+    let src = typeof imageSrc === 'string' ? imageSrc : null;
+    if (!src) {
+        const img = document.querySelector('.founder-avatar img');
+        if (img) src = img.src;
+    }
+    if (!src) return;
+    const modalImage = document.getElementById('founderModalImage') || document.getElementById('modalImage');
+    const imageModal = document.getElementById('founderImageModal') || document.getElementById('imageModal');
+    if (modalImage) modalImage.src = src;
+    if (imageModal) imageModal.classList.add('active');
+}
+function closeImageModal(event) {
+    const modal = document.getElementById('founderImageModal') || document.getElementById('imageModal');
+    if (!modal) return;
+    if (!event || event.target === modal || event.target.classList.contains('close-modal')) {
+        modal.classList.remove('active');
+    }
+}
+function contactDeveloper() {
+    window.open('https://app.fastbots.ai/embed/cmillclid07mep81pmwkjqyq6', '_blank');
+}
+
+// ============================================================
+// طلبات انضمام المناديب
+// ============================================================
+async function loadPendingDeliveries() {
+    if (!appState.user || appState.userData.account_type !== 'founder') return;
+    try {
+        const { data, error } = await supabaseClient.from('user_data').select('id, name, email, phone, center, created_at').eq('account_type', 'delivery').eq('status', 'pending');
+        if (error) throw error;
+        const container = document.getElementById('pendingDeliveriesList');
+        if (!container) return;
+        if (!data || data.length === 0) { container.innerHTML = '<p>لا توجد طلبات انضمام حالياً</p>'; return; }
+        container.innerHTML = '';
+        data.forEach(del => {
+            const div = document.createElement('div');
+            div.className = 'pending-delivery-item';
+            div.innerHTML = `<div class="pending-info"><div class="pending-name">${escapeHTML(del.name || del.email)}</div><div class="pending-email">${del.email} | ${del.phone || 'لا يوجد هاتف'} | المركز: ${del.center || 'غير محدد'}</div></div><div class="pending-actions"><button class="approve-btn" onclick="approveDeliveryPerson('${del.id}')">قبول</button><button class="reject-btn" onclick="rejectDeliveryPerson('${del.id}')">رفض</button></div>`;
+            container.appendChild(div);
+        });
+    } catch(err) {
+        console.error(err);
+        const container = document.getElementById('pendingDeliveriesList');
+        if (container) container.innerHTML = '<p>حدث خطأ في تحميل الطلبات</p>';
+    }
+}
+
+async function approveDeliveryPerson(userId) {
+    if (!userId) { showToast('معرف المندوب غير صحيح', 'error'); return; }
+    showLoading(true);
+    try {
+        const { data: deliveryData, error: fetchError } = await supabaseClient
+            .from('user_data')
+            .select('id, name, email, center')
+            .eq('id', userId)
+            .maybeSingle();
+        if (fetchError) throw fetchError;
+        if (!deliveryData) { showToast('المندوب غير موجود', 'error'); return; }
+
+        const updates = { status: 'approved', updated_at: new Date().toISOString() };
+        const { data, error: updateError } = await supabaseClient
+            .from('user_data')
+            .update(updates)
+            .eq('id', userId)
+            .select()
+            .maybeSingle();
+
+        if (updateError) throw updateError;
+        if (!data) { showToast('فشل تحديث بيانات المندوب', 'error'); return; }
+
+        await sendNotification(
+            userId,
+            '🎉 تم قبول طلب الانضمام كمندوب',
+            `مبروك! تم قبول طلبك للعمل كمندوب في مركز ${deliveryData.center || 'غير محدد'}. يمكنك الآن استلام الطلبات المتاحة.`
+        );
+
+        showToast(`تم قبول المندوب ${deliveryData.name || ''} بنجاح`, 'success');
+
+        await loadPendingDeliveries();
+        if (typeof displayAllDeliveryPersons === 'function') {
+            await displayAllDeliveryPersons();
+        }
+
+        if (appState.user && appState.user.id === userId) {
+            appState.userData.status = 'approved';
+            if (appState.currentScreen === 'deliveryDashboardScreen') {
+                if (typeof refreshDeliveryDashboard === 'function') {
+                    await refreshDeliveryDashboard();
+                }
+            }
+        }
+
+    } catch(err) {
+        console.error('❌ خطأ في قبول المندوب:', err);
+        showToast(err.message || 'حدث خطأ أثناء قبول المندوب', 'error');
+    } finally { showLoading(false); }
+}
+
+async function rejectDeliveryPerson(userId) {
+    if (!confirm('هل أنت متأكد من رفض هذا المندوب؟ سيتم حذف حسابه.')) return;
+    showLoading(true);
+    try {
+        await supabaseClient.from('user_data').delete().eq('id', userId);
+        showToast('تم رفض المندوب وحذف الحساب', 'success');
+        await loadPendingDeliveries();
+        if (typeof displayAllDeliveryPersons === 'function') await displayAllDeliveryPersons();
+    } catch(err) {
+        showToast(err.message, 'error');
+    } finally { showLoading(false); }
+}
+
+// ============================================================
+// إشعارات واشتراكات
+// ============================================================
+async function sendNotification(userId, title, message, data = {}) {
+    try {
+        await supabaseClient.from('notifications').insert({
+            user_id: userId, title, message, data, created_at: new Date(), is_read: false
+        });
+    } catch (error) { console.warn('فشل إرسال الإشعار', error); }
+}
+async function loadUnreadNotificationsCount() {
+    if (!appState.user) return;
+    try {
+        const { count, error } = await supabaseClient.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', appState.user.id).eq('is_read', false);
+        if (!error) {
+            const badge = document.getElementById('notificationBadge');
+            if (badge) {
+                badge.textContent = count || 0;
+                badge.style.display = count > 0 ? 'flex' : 'none';
+            }
+        }
+    } catch(e) { console.warn('فشل تحميل عدد الإشعارات', e); }
+}
+function setupRealtimeSubscriptions() {
+    if (!appState.user) return;
+    if (appState.ordersSubscription) appState.ordersSubscription.unsubscribe();
+    appState.ordersSubscription = supabaseClient.channel('orders-channel')
+        .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'orders'
+        }, (payload) => {
+            console.log('Order change:', payload);
+            if (appState.currentScreen === 'sellerDashboardScreen' && appState.userData.account_type === 'seller') {
+                if (typeof refreshSellerDashboard === 'function') refreshSellerDashboard();
+            } else if (appState.currentScreen === 'deliveryDashboardScreen') {
+                if (typeof refreshDeliveryDashboard === 'function') refreshDeliveryDashboard();
+            } else if (appState.currentScreen === 'ordersScreen') {
+                if (typeof loadBuyerOrdersWithTimeline === 'function') loadBuyerOrdersWithTimeline();
+            }
+            loadUnreadNotificationsCount();
+        }).subscribe();
+    if (appState.notificationsSubscription) appState.notificationsSubscription.unsubscribe();
+    appState.notificationsSubscription = supabaseClient.channel('notifications-channel')
+        .on('postgres_changes', {
+            event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${appState.user.id}`
+        }, (payload) => {
+            showToast(payload.new.title, 'info');
+            loadUnreadNotificationsCount();
+        }).subscribe();
+}
+
+// ============================================================
+// التنقل بين الشاشات
+// ============================================================
+function showScreen(screenId) {
+    if (screenId === 'sellerDashboardScreen') {
+        if (!appState.user || appState.userData.account_type !== 'seller') {
+            showToast('هذه الصفحة مخصصة للبائعين فقط', 'error');
+            showScreen('homeScreen');
+            return;
+        }
+        if (typeof refreshSellerDashboard === 'function') refreshSellerDashboard();
+    }
+    if (screenId === 'deliveryDashboardScreen') {
+        if (!appState.user || appState.userData.account_type !== 'delivery') {
+            showToast('هذه الصفحة مخصصة للمندوبين فقط', 'error');
+            showScreen('homeScreen');
+            return;
+        }
+        if (typeof refreshDeliveryDashboard === 'function') refreshDeliveryDashboard();
+    }
+    if (screenId === 'founderDashboardScreen') {
+        if (!appState.user || appState.userData.account_type !== 'founder') {
+            showToast('هذه الصفحة مخصصة للمؤسس فقط', 'error');
+            showScreen('homeScreen');
+            return;
+        }
+        loadGlobalFounderVisibility();
+        loadFounderStats();
+        loadPendingDeliveries();
+        if (typeof displayAllDeliveryPersons === 'function') displayAllDeliveryPersons();
+    }
+    if (screenId === 'generalManagerDashboardScreen') {
+        // الحماية الحقيقية في RLS؛ هذا حارس واجهة فقط
+        if (typeof misarIsGeneralManager !== 'function' || !misarIsGeneralManager()) {
+            showToast('هذه الصفحة مخصصة للمدير العام فقط', 'error');
+            showScreen('homeScreen');
+            return;
+        }
+        if (typeof misarInitGeneralManagerDashboard === 'function') misarInitGeneralManagerDashboard();
+    }
+    if (screenId === 'ordersScreen') {
+        if (typeof loadBuyerOrdersWithTimeline === 'function') loadBuyerOrdersWithTimeline();
+    }
+    if (screenId === 'editProfileScreen') {
+        updateUserInfo();
+    }
+
+    document.querySelectorAll('.screen').forEach(screen => {
+        screen.classList.remove('active');
+        screen.classList.add('hidden');
+    });
+    updateNavigation(screenId);
+    const screen = document.getElementById(screenId);
+    if (screen) {
+        screen.classList.remove('hidden');
+        screen.classList.add('active');
+        appState.previousScreen = appState.currentScreen;
+        appState.currentScreen = screenId;
+        const backBtn = document.querySelector('.back-btn');
+        if (backBtn) backBtn.classList.toggle('active', screenId !== 'homeScreen' && screenId !== 'locationScreen');
+    }
+    if (screenId === 'marketScreen') {
+        const searchInput = document.getElementById('marketSearchInput');
+        if (searchInput) { searchInput.value = ''; }
+        const clearSearch = document.getElementById('clearSearch');
+        if (clearSearch) clearSearch.style.display = 'none';
+        if (typeof loadMarketProducts === 'function') loadMarketProducts();
+    }
+    if (screenId === 'electronicsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('electronics', 'electronicsProducts', 'إلكترونيات وأجهزة');
+    }
+    if (screenId === 'fashionScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('fashion', 'fashionProducts', 'أزياء وموضة');
+    }
+    if (screenId === 'homeGoodsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('home', 'homeProducts', 'منزل وديكور');
+    }
+    if (screenId === 'foodScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('food', 'foodProducts', 'أطعمة ومأكولات');
+    }
+    if (screenId === 'beautyScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('beauty', 'beautyProducts', 'جمال وعناية');
+    }
+    if (screenId === 'sportsScreen') {
+        if (typeof loadCategoryProducts === 'function') loadCategoryProducts('sports', 'sportsProducts', 'رياضة ولياقة');
+    }
+    if (screenId === 'profileScreen') {
+        updateProfileLocation();
+        // تحديث عداد عدد الطلبات في بطاقة "طلبات" بالملف الشخصي
+        if (appState.user && typeof loadBuyerOrdersWithTimeline === 'function') {
+            loadBuyerOrdersWithTimeline();
+        } else {
+            const profileOrdersCountEl = document.getElementById('profileOrdersCount');
+            if (profileOrdersCountEl) profileOrdersCountEl.textContent = '0';
+        }
+    }
+    if (screenId === 'editProfileScreen' && appState.user) updateProfileLocation();
+    if (screenId === 'servicesScreen') {
+        if (typeof loadServices === 'function') loadServices();
+    }
+    if (screenId === 'misarTechScreen' && typeof renderMisarTechServices === 'function') {
+        renderMisarTechServices();
+    }
+    if ((screenId === 'sellerDashboardScreen' || screenId === 'deliveryDashboardScreen' ||
+        screenId === 'profileScreen') &&
+        typeof updatePushNotificationButton === 'function') {
+        updatePushNotificationButton();
+    }
+    if (screenId === 'cartScreen') {
+        if (typeof loadCart === 'function') loadCart();
+    }
+    if (screenId === 'loginScreen' || screenId === 'registerScreen') setTimeout(addInputInteractions, 50);
+    if (screenId === 'registerScreen') setTimeout(initRegisterLocationSelectors, 50);
+}
+function goBack() { showScreen(appState.previousScreen || 'homeScreen'); }
+function updateNavigation(screenId) {
+    document.querySelectorAll('.nav-item').forEach((item, index) => {
+        item.classList.remove('active');
+        if (screenId === 'homeScreen' && index === 0) item.classList.add('active');
+        else if (screenId === 'marketScreen' && index === 1) item.classList.add('active');
+        else if (screenId === 'servicesScreen' && index === 2) item.classList.add('active');
+        else if (screenId === 'cartScreen' && index === 3) item.classList.add('active');
+        else if (screenId === 'profileScreen' && index === 4) item.classList.add('active');
+    });
+}
+function skipLogin() { showScreen('homeScreen'); }
+function addInputInteractions() {
+    const inputs = document.querySelectorAll('#loginScreen input, #registerScreen input');
+    const passwordInputs = document.querySelectorAll('#loginPassword, #registerPassword');
+    inputs.forEach(inp => {
+        inp.addEventListener('focus', () => setBearExpression('blink'));
+        inp.addEventListener('blur', () => setBearExpression(''));
+    });
+    passwordInputs.forEach(pw => {
+        pw.addEventListener('focus', () => setBearExpression('covering'));
+        pw.addEventListener('blur', () => setBearExpression(''));
+    });
+}
+function togglePasswordVisibility(inputId, toggleEl) {
+    const input = document.getElementById(inputId);
+    if (!input || !toggleEl) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    const icon = toggleEl.querySelector('i');
+    if (icon) {
+        icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+}
+window.togglePasswordVisibility = togglePasswordVisibility;
+
+// ============================================================
+// الدردشة
+// ============================================================
+function openChatbot(mode = 'general') {
+    window.misarTechChatMode = mode === 'misar-tech';
+    const chatbotScreen = document.getElementById('chatbotScreen');
+    if (chatbotScreen) chatbotScreen.classList.add('active');
+    const badge = document.getElementById('chatbotBadge');
+    if (badge) badge.style.display = 'none';
+    const input = document.getElementById('chatInput');
+    if (input) input.placeholder = window.misarTechChatMode
+        ? 'اسأل عن خدمات MISAR TECH أو فكرتك...'
+        : 'اكتب رسالتك...';
+    const messages = document.getElementById('chatMessages');
+    if (messages && window.misarTechChatMode && !messages.querySelector('[data-misar-tech-welcome]')) {
+        const welcome = document.createElement('div');
+        welcome.className = 'message bot';
+        welcome.dataset.misarTechWelcome = 'true';
+        welcome.textContent = 'أهلاً بك في MISAR TECH 👋 اسألني عن الموقع أو المتجر أو التطبيق أو النظام الذي يناسب فكرتك، وسأساعدك في تحديد الخطوة التالية.';
+        messages.appendChild(welcome);
+    }
+    if (messages) messages.scrollTop = messages.scrollHeight;
+}
+function openMisarTechChat() {
+    openChatbot('misar-tech');
+    const input = document.getElementById('chatInput');
+    if (input) input.focus();
+}
+function closeChatbot() {
+    const chatbotScreen = document.getElementById('chatbotScreen');
+    if (chatbotScreen) chatbotScreen.classList.remove('active');
+    window.misarTechChatMode = false;
+    const input = document.getElementById('chatInput');
+    if (input) input.placeholder = 'اكتب رسالتك...';
+}
+function sendMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (!msg) return;
+    addMessage(msg, 'user');
+    input.value = '';
+    showChatTyping(true);
+    getMisarAiResponse(msg, { misarTech: window.misarTechChatMode === true }).then(reply => {
+        showChatTyping(false);
+        addMessage(reply, 'bot');
+        const messages = document.getElementById('chatMessages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+    });
+}
+function showChatTyping(show) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    let el = document.getElementById('misarTyping');
+    if (show && !el) {
+        el = document.createElement('div');
+        el.id = 'misarTyping';
+        el.className = 'message bot';
+        el.textContent = 'MISAR AI يكتب...';
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
+    } else if (!show && el) {
+        el.remove();
+    }
+}
+function sendSuggestion(text) {
+    addMessage(text, 'user');
+    showChatTyping(true);
+    getMisarAiResponse(text, { misarTech: window.misarTechChatMode === true }).then(reply => {
+        showChatTyping(false);
+        addMessage(reply, 'bot');
+        const messages = document.getElementById('chatMessages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+    });
+}
+function addMessage(text, sender) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.className = `message ${sender}`;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+function getMisarTechShareLink() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('section', 'misar-tech');
+    return url.protocol === 'file:' ? `${url.pathname.split('/').pop()}${url.search}` : url.href;
+}
+async function copyMisarTechLink() {
+    const link = getMisarTechShareLink();
+    try {
+        await navigator.clipboard.writeText(link);
+        showToast('تم نسخ رابط قسم MISAR TECH', 'success');
+        return;
+    } catch (error) {
+        console.warn('تعذر استخدام الحافظة مباشرة، ستتم تجربة النسخ البديل:', error);
+    }
+
+    const field = document.createElement('textarea');
+    field.value = link;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (error) {
+        console.error('تعذر نسخ رابط MISAR TECH:', error);
+    } finally {
+        field.remove();
+    }
+    if (copied) {
+        showToast('تم نسخ رابط قسم MISAR TECH', 'success');
+    } else {
+        showToast('تعذر نسخ الرابط تلقائياً. انسخ هذا الرابط يدوياً: ' + link, 'error');
+    }
+}
+function getBotResponse(msg) {
+    const m = msg.toLowerCase();
+    if (m.includes('السلام') || m.includes('اهلا')) return 'وعليكم السلام! كيف يمكنني مساعدتك؟ 😊';
+    if (m.includes('منتجات')) return 'لدينا إلكترونيات، أزياء، أثاث، أطعمة. تصفح المتجر!';
+    if (m.includes('اشتري') || m.includes('شراء')) return 'اذهب للمتجر، أضف المنتج للسلة ثم أكمل الطلب من صفحة السلة.';
+    if (m.includes('عروض')) return 'خصم 20% على الأثاث، وساعة هواوي بسعر مميز.';
+    if (m.includes('صيانة')) return 'خدمات الصيانة متوفرة: أجهزة، سباكة، كهرباء. احجز من قسم الخدمات.';
+    if (m.includes('طلب')) return 'تابع طلباتك من صفحة "طلباتي" في الملف الشخصي.';
+    if (m.includes('خدمة العملاء') || m.includes('الدعم')) return 'تواصل معنا: support@misar.com أو 19000.';
+    if (m.includes('شكرا')) return 'الشكر لله، دائمًا في خدمتك!';
+    return 'عذرًا، لم أفهم. جرب الاقتراحات أعلاه.';
+}
+
+// ============================================================
+// دوال الأمان (تغيير كلمة المرور، إعدادات الأمان)
+// ============================================================
+function showChangePasswordModal() {
+    if (!appState.user) { showToast('يجب تسجيل الدخول أولاً', 'warning'); return; }
+    const modal = document.getElementById('changePasswordModal');
+    if (modal) modal.classList.add('active');
+}
+function showSecurityModal() {
+    if (!appState.user) { showToast('يجب تسجيل الدخول أولاً', 'warning'); return; }
+    const modal = document.getElementById('securityModal');
+    if (modal) modal.classList.add('active');
+}
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('active');
+    if (modalId === 'changePasswordModal') {
+        ['oldPassword', 'newPassword', 'confirmNewPassword'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+    }
+}
+let changingPassword = false;
+async function changePassword() {
+    if (changingPassword) return;
+    const oldPass = document.getElementById('oldPassword');
+    const newPass = document.getElementById('newPassword');
+    const confirmPass = document.getElementById('confirmNewPassword');
+    if (!appState.user) { showToast('يجب تسجيل الدخول أولاً', 'warning'); return; }
+    if (!oldPass || !newPass || !confirmPass) { showToast('نموذج تغيير كلمة المرور غير متوفر', 'error'); return; }
+    if (!oldPass.value || !newPass.value || !confirmPass.value) { showToast('يرجى ملء جميع الحقول', 'warning'); return; }
+    if (newPass.value !== confirmPass.value) { showToast('كلمة المرور الجديدة غير متطابقة', 'error'); return; }
+    if (newPass.value.length < 8) { showToast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل', 'warning'); return; }
+    if (newPass.value === oldPass.value) { showToast('اختر كلمة مرور جديدة مختلفة عن الحالية', 'warning'); return; }
+    if (!appState.user.email) {
+        showToast('لا يوجد بريد إلكتروني للحساب للتحقق من كلمة المرور الحالية', 'error');
+        return;
+    }
+
+    const submitButton = document.querySelector('#changePasswordModal .login-btn');
+    const originalButtonHtml = submitButton?.innerHTML;
+    changingPassword = true;
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التغيير...';
+    }
+    try {
+        const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
+            email: appState.user.email,
+            password: oldPass.value
+        });
+        if (verifyError) throw new Error('كلمة المرور الحالية غير صحيحة');
+
+        const { error } = await supabaseClient.auth.updateUser({ password: newPass.value });
+        if (error) throw error;
+        closeModal('changePasswordModal');
+        showToast('تم تغيير كلمة المرور بنجاح', 'success');
+    } catch (error) {
+        console.error('فشل تغيير كلمة المرور:', error);
+        showToast(error.message || 'تعذر تغيير كلمة المرور', 'error');
+    } finally {
+        changingPassword = false;
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonHtml;
+        }
+    }
+}
+function saveSecuritySettings() {
+    const twoFactor = document.getElementById('twoFactorCheck');
+    const enabled = twoFactor ? twoFactor.checked : false;
+    showToast(`تم حفظ إعدادات الأمان (المصادقة الثنائية: ${enabled ? 'مفعلة' : 'غير مفعلة'})`, 'success');
+    closeModal('securityModal');
+}
+
+// ============================================================
+// دوال إدارة المنتجات من المؤسس (تم نقلها إلى admin-products.js)
+// ============================================================
+// يتم تعريفها في admin-products.js
+
+// ============================================================
+// دوال إدارة المناديب (تم نقلها إلى admin-couriers.js)
+// ============================================================
+// يتم تعريفها في admin-couriers.js
+
+// ============================================================
+// دوال إدارة العملاء والبائعين (تم نقلها إلى admin-users.js)
+// ============================================================
+// يتم تعريفها في admin-users.js
+
+// ============================================================
+// دوال إدارة العقارات (تم نقلها إلى admin-properties.js)
+// ============================================================
+// يتم تعريفها في admin-properties.js
+
+// ============================================================
+// دوال إدارة الخدمات (تم نقلها إلى admin-services.js)
+// ============================================================
+// يتم تعريفها في admin-services.js
+
+// ============================================================
+// دوال إدارة الطلبات (تم نقلها إلى admin-orders.js)
+// ============================================================
+// يتم تعريفها في admin-orders.js
+
+// ============================================================
+// دوال إدارة البلاغات (تم نقلها إلى admin-reports.js)
+// ============================================================
+// يتم تعريفها في admin-reports.js
+
+// ============================================================
+// دوال سجل النشاط (تم نقلها إلى admin-logs.js)
+// ============================================================
+// يتم تعريفها في admin-logs.js
+
+// ============================================================
+// دوال الإعدادات والإشعارات الجماعية (تم نقلها إلى admin-settings.js)
+// ============================================================
+// يتم تعريفها في admin-settings.js
+
+// ============================================================
+// دوال CRUD الأساسية للمؤسس (مضافة حديثاً)
+// ============================================================
+
+// ----- المناديب -----
+async function getAllDeliveries() {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .select('*')
+        .eq('account_type', 'delivery')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function updateDeliveryStatus(userId, status) {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .update({ status, updated_at: new Date() })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    // بدون هذا التحقق تظهر رسالة نجاح وهمية والحالة لا تتغير فعلياً.
+    if (!data) throw new Error('لم يتم تحديث حالة المندوب؛ تأكد من صلاحيات المؤس على user_data (RLS).');
+    if (data && appState.user?.id === userId) {
+        appState.userData.status = status;
+        const isDelivery = appState.userData.account_type === 'delivery';
+        toggleDeliveryMenuItem(isDelivery && status === 'approved');
+    }
+    await logActivity(appState.user.id, `update_delivery_status`, { user_id: userId, status });
+    return data;
+}
+
+async function deleteDelivery(userId) {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .update({ status: 'rejected', updated_at: new Date() })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, 'delete_delivery', { user_id: userId });
+    return data;
+}
+
+// ----- العملاء -----
+async function getAllClients() {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .select('*')
+        .eq('account_type', 'client')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function updateClientStatus(userId, status) {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .update({ status, updated_at: new Date() })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    if (!data) throw new Error('لم يتم تحديث حالة العميل؛ تأكد من صلاحيات المؤس على user_data (RLS).');
+    await logActivity(appState.user.id, `update_client_status`, { user_id: userId, status });
+    return data;
+}
+
+async function deleteClient(userId) {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .update({ status: 'deleted', updated_at: new Date() })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, 'delete_client', { user_id: userId });
+    return data;
+}
+
+// ----- البائعين -----
+async function getAllSellers() {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .select('*')
+        .eq('account_type', 'seller')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    // إضافة إحصائيات إضافية (عدد المنتجات، الطلبات، التقييم)
+    for (let seller of data) {
+        const { count: productCount } = await supabaseClient
+            .from('products')
+            .select('id', { count: 'exact' })
+            .eq('user_id', seller.id);
+        seller.product_count = productCount || 0;
+
+        const { count: orderCount } = await supabaseClient
+            .from('orders')
+            .select('id', { count: 'exact' })
+            .eq('seller_id', seller.id);
+        seller.order_count = orderCount || 0;
+
+        const { data: products } = await supabaseClient
+            .from('products')
+            .select('avg_rating')
+            .eq('user_id', seller.id);
+        const ratings = products?.filter(p => p.avg_rating).map(p => p.avg_rating) || [];
+        seller.avg_rating = ratings.length ? (ratings.reduce((a,b) => a+b, 0) / ratings.length) : 0;
+    }
+    return data || [];
+}
+
+async function updateSellerStatus(userId, status) {
+    const { data, error } = await supabaseClient
+        .from('user_data')
+        .update({ status, updated_at: new Date() })
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    // RLS قد تمنع التعديل بصمت فتُرجع صفر صفوف بدون خطأ.
+    if (!data) throw new Error('لم يتم تحديث حالة البائع؛ تأكد من صلاحيات المؤس على user_data (RLS).');
+    await logActivity(appState.user.id, `update_seller_status`, { user_id: userId, status });
+    return data;
+}
+
+// ----- المنتجات (إدارة المؤسس) -----
+async function getAllProductsAdmin() {
+    const { data, error } = await supabaseClient
+        .from('products')
+        .select('*, user_data(name)')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function updateProductStatusAdmin(productId, status) {
+    const { data, error } = await supabaseClient
+        .from('products')
+        .update({ status, updated_at: new Date() })
+        .eq('id', productId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, `update_product_status`, { product_id: productId, status });
+    return data;
+}
+
+async function deleteProductAdmin(productId) {
+    // حذف نهائي أو وضع حالة محذوف
+    const { data, error } = await supabaseClient
+        .from('products')
+        .update({ status: 'deleted', updated_at: new Date() })
+        .eq('id', productId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, 'delete_product_admin', { product_id: productId });
+    return data;
+}
+
+// ----- العقارات -----
+async function getAllProperties() {
+    const { data, error } = await supabaseClient
+        .from('properties')
+        .select('*, owner:owner_id(id, name, email)')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function saveProperty(propertyData) {
+    const { data, error } = await supabaseClient
+        .from('properties')
+        .upsert(propertyData)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, propertyData.id ? 'update_property' : 'add_property', { property_id: data.id });
+    return data;
+}
+
+async function updatePropertyStatus(propertyId, status) {
+    const { data, error } = await supabaseClient
+        .from('properties')
+        .update({ status, updated_at: new Date() })
+        .eq('id', propertyId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, `update_property_status`, { property_id: propertyId, status });
+    return data;
+}
+
+async function deleteProperty(propertyId) {
+    const { data, error } = await supabaseClient
+        .from('properties')
+        .update({ status: 'hidden', updated_at: new Date() })
+        .eq('id', propertyId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, 'delete_property', { property_id: propertyId });
+    return data;
+}
+
+// ----- الخدمات -----
+async function getAllServices() {
+    const { data, error } = await supabaseClient
+        .from('services')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (!error && data) return data;
+    // fallback على الخدمات المحلية في appState
+    return appState.services || [];
+}
+
+async function saveService(serviceData) {
+    const { data, error } = await supabaseClient
+        .from('services')
+        .upsert(serviceData)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, serviceData.id ? 'update_service' : 'add_service', { service_id: data.id });
+    return data;
+}
+
+async function deleteService(serviceId) {
+    const { data, error } = await supabaseClient
+        .from('services')
+        .delete()
+        .eq('id', serviceId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, 'delete_service', { service_id: serviceId });
+    return data;
+}
+
+// ----- الطلبات (إدارة المؤسس) -----
+async function getAllOrdersAdmin() {
+    const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*, buyer:buyer_id(id, name, email), seller:seller_id(id, name, email), delivery:delivery_id(id, name, email)')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function updateOrderStatusAdmin(orderId, status) {
+    const { data, error } = await supabaseClient
+        .from('orders')
+        .update({ status, updated_at: new Date() })
+        .eq('id', orderId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, `update_order_status_admin`, { order_id: orderId, status });
+    return data;
+}
+
+// ----- البلاغات -----
+async function getAllReports() {
+    const { data, error } = await supabaseClient
+        .from('reports')
+        .select('*, reporter:reporter_id(id, name, email)')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+async function updateReportStatus(reportId, status) {
+    const { data, error } = await supabaseClient
+        .from('reports')
+        .update({ status, updated_at: new Date() })
+        .eq('id', reportId)
+        .select()
+        .maybeSingle();
+    if (error) throw error;
+    await logActivity(appState.user.id, `update_report_status`, { report_id: reportId, status });
+    return data;
+}
+
+// ----- سجل النشاط -----
+async function logActivity(adminId, actionType, details = {}) {
+    try {
+        await supabaseClient.from('activity_logs').insert({
+            admin_id: adminId,
+            action_type: actionType,
+            details,
+            created_at: new Date()
+        });
+    } catch (err) { console.warn('Failed to log activity:', err); }
+}
+
+async function getAllActivityLogs() {
+    const { data, error } = await supabaseClient
+        .from('activity_logs')
+        .select('*, admin:admin_id(id, name, email)')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+// ----- الإشعارات الجماعية -----
+async function sendBulkNotification(recipientType, title, message, specificEmail = null) {
+    if (!recipientType) {
+        recipientType = document.getElementById('notificationRecipients')?.value || 'all';
+        title = document.getElementById('notificationTitle')?.value.trim() || '';
+        message = document.getElementById('notificationMessage')?.value.trim() || '';
+        specificEmail = document.getElementById('specificUserEmail')?.value.trim() || null;
+    }
+    if (!title || !message) {
+        showToast('اكتب عنوان الإشعار ونصه أولاً.', 'warning');
+        return 0;
+    }
+    let pushResult = null;
+    let pushError = null;
+    try {
+        const { data, error } = await supabaseClient.functions.invoke('misar-push-order', {
+            body: {
+                action: 'send_announcement',
+                recipient_type: recipientType,
+                specific_email: specificEmail,
+                title,
+                message
+            }
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        pushResult = data;
+    } catch (error) {
+        pushError = error;
+        console.error('تعذر إرسال إعلان Push:', error);
+    }
+    let userIds = [];
+    if (recipientType === 'all') {
+        const { data, error } = await supabaseClient.from('user_data').select('id');
+        if (error) throw error;
+        userIds = data?.map(u => u.id) || [];
+    } else if (recipientType === 'clients') {
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'client');
+        if (error) throw error;
+        userIds = data?.map(u => u.id) || [];
+    } else if (recipientType === 'sellers') {
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'seller');
+        if (error) throw error;
+        userIds = data?.map(u => u.id) || [];
+    } else if (recipientType === 'deliveries') {
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('account_type', 'delivery');
+        if (error) throw error;
+        userIds = data?.map(u => u.id) || [];
+    } else if (recipientType === 'specific' && specificEmail) {
+        const { data, error } = await supabaseClient.from('user_data').select('id').eq('email', specificEmail);
+        if (error) throw error;
+        if (data?.length) userIds = [data[0].id];
+        else throw new Error('المستخدم غير موجود');
+    }
+    for (const userId of userIds) {
+        await sendNotification(userId, title, message);
+    }
+    await logActivity(appState.user.id, 'send_bulk_notification', { recipientType, count: userIds.length });
+    const pushStatus = pushResult
+        ? (pushResult.sent
+            ? ` وإرساله كـ Push إلى ${pushResult.sent} جهاز${pushResult.failed ? `، وفشل الإرسال إلى ${pushResult.failed} جهاز` : ''}`
+            : (pushResult.failed
+                ? `، وتعذر إرسال Push إلى ${pushResult.failed} جهاز`
+                : '، ولا توجد أجهزة مفعّل عليها Push ضمن المستلمين'))
+        : `، لكن تعذر إرسال Push: ${pushError?.message || 'خطأ غير معروف'}`;
+    showToast(`تم إرسال الإشعار داخل التطبيق${pushStatus}.`, pushError ? 'warning' : 'success');
+    return userIds.length;
+}
+
+// ----- الإعدادات -----
+async function getAppSettings() {
+    const { data, error } = await supabaseClient
+        .from('app_settings')
+        .select('setting_key, setting_value');
+    if (error) throw error;
+    return data || [];
+}
+
+async function saveAppSettings(settings) {
+    for (const item of settings) {
+        await supabaseClient
+            .from('app_settings')
+            .upsert(
+                { setting_key: item.setting_key, setting_value: item.setting_value, updated_at: new Date().toISOString() },
+                { onConflict: 'setting_key' }
+            );
+    }
+    await logActivity(appState.user.id, 'update_app_settings', { count: settings.length });
+}
+
+// ============================================================
+// مركز التحكم في إشعارات المؤسس (notification_settings)
+// ============================================================
+// الإعدادات تُخزّن في app_settings تحت مفتاح واحد: notification_settings
+// القيم الافتراضية مطابقة لما في FOUNDER_CONTROL_CENTER.sql
+const DEFAULT_NOTIFICATION_SETTINGS = {
+    master_enabled: true,
+    channel: 'whatsapp',
+    founder_whatsapp_number: '',
+    types: {
+        new_client: true, new_seller: true, new_delivery: true,
+        account_verification: true,
+        order_created: true, order_status_changed: true,
+        order_accepted: true, order_rejected: true,
+        order_cancelled: true, return_requested: true,
+        delivery_delayed: false, delivery_problem: false,
+        complaint_new: true,
+        gm_login: false, gm_permissions_changed: true,
+        admin_suspended: true, platform_settings_changed: true,
+        unauthorized_access: false, critical_error: false,
+        notification_failed: true
+    }
+};
+
+async function getNotificationSettings() {
+    const { data, error } = await supabaseClient
+        .from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'notification_settings')
+        .maybeSingle();
+    if (error) {
+        console.warn('getNotificationSettings:', error.message);
+        return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+    }
+    let val = data && data.setting_value ? data.setting_value : null;
+
+    // app_settings.setting_value قد يكون jsonb (يصل ككائن) أو text (يصل كنص JSON).
+    // في حالة text كان الشرط القديم (typeof val !== 'object') يتجاهل الإعدادات المحفوظة
+    // ويُعيد القيم الافتراضية دائماً — لذلك نحلّل النص هنا.
+    if (typeof val === 'string') {
+        const s = val.trim();
+        if (!s) return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+        try {
+            val = JSON.parse(s);
+        } catch (e) {
+            console.warn('getNotificationSettings: setting_value ليس JSON صالحاً');
+            return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+        }
+    }
+
+    if (!val || typeof val !== 'object') {
+        return JSON.parse(JSON.stringify(DEFAULT_NOTIFICATION_SETTINGS));
+    }
+    // دمج مع الافتراضي حتى لا تضيع المفاتيح الجديدة
+    return {
+        master_enabled: val.master_enabled !== false,
+        channel: typeof val.channel === 'string' ? val.channel : 'whatsapp',
+        founder_whatsapp_number: typeof val.founder_whatsapp_number === 'string' ? val.founder_whatsapp_number : '',
+        types: Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS.types, val.types || {})
+    };
+}
+
+async function saveNotificationSettings(next) {
+    const payload = {
+        master_enabled: next.master_enabled !== false,
+        channel: next.channel || 'whatsapp',
+        founder_whatsapp_number: next.founder_whatsapp_number || '',
+        types: Object.assign({}, DEFAULT_NOTIFICATION_SETTINGS.types, next.types || {})
+    };
+    // required: without onConflict, upsert targets the PK (id) and the existing
+    // setting_key row collides on app_settings_setting_key_key.
+    //
+    // setting_value يُخزّن كنص JSON صريح:
+    //   • يعمل مع العمود من نوع text (نص صالح).
+    //   • ويعمل مع jsonb أيضاً (PostgREST يُحوّل النص إلى jsonb تلقائياً
+    //     لأن نوع الهدف jsonb).
+    // إرساله ككائن مباشرةً كان ينجح مع jsonb لكن قد يُقدّم بصيغة غير متوقعة مع text.
+    const { error } = await supabaseClient
+        .from('app_settings')
+        .upsert(
+            {
+                setting_key: 'notification_settings',
+                setting_value: JSON.stringify(payload),
+                updated_at: new Date().toISOString()
+            },
+            { onConflict: 'setting_key' }
+        );
+    if (error) throw error;
+    await logActivity(appState.user.id, 'update_notification_settings', {
+        master_enabled: payload.master_enabled,
+        disabled_count: Object.keys(payload.types).filter(k => payload.types[k] === false).length
+    });
+    return payload;
+}
+
+// أحدث محاولات إرسال المؤسس (للعرض في اللوحة)
+async function getFounderNotificationLog(limit = 20) {
+    const { data, error } = await supabaseClient
+        .from('founder_notifications')
+        .select('id, event_type, status, error_detail, created_at, sent_at')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) {
+        console.warn('getFounderNotificationLog:', error.message);
+        return [];
+    }
+    return data || [];
+}
+
+// اختبار الربط: ينادي الدالة بمفتاح اختبار (لا يُرسل لمستخدم آخر)
+async function testFounderNotificationLink() {
+    const eventKey = 'link_test:' + Date.now();
+
+    let res;
+    try {
+        res = await supabaseClient.functions.invoke('misar-founder-notify', {
+            body: {
+                // نوع مدعوم في قائمة «الإشعارات المدعومة» بلوحة المؤسس
+                event_type: 'order_status_changed',
+                event_key: eventKey,
+                payload: { order_short: 'TEST', status: 'اختبار الربط من لوحة المؤسس' }
+            }
+        });
+    } catch (e) {
+        // استثناء حقيقي = انقطاع شبكة/CORS قبل وصول الطلب للخادم.
+        // ملاحظة: 404 و 401 لا تُرمى هنا، بل تعود داخل res.error.
+        throw new Error('تعذّر الاتصال بالخادم (شبكة/CORS) أثناء مناداة misar-founder-notify. ' +
+            'التفاصيل: ' + ((e && e.message) || 'شبكة'));
+    }
+
+    const { data, error } = res;
+
+    if (error) {
+        // نستخرج سبب الخادم الحقيقي بدل الرسالة العامة
+        let detail = (error && error.message) || 'خطأ غير معروف';
+        try {
+            const ctx = error.context;
+            if (ctx) {
+                // Response object (Supabase Edge Functions)
+                const status = ctx.status || (ctx.statusCode);
+                if (status) detail = 'HTTP ' + status + ' — ' + detail;
+                if (typeof ctx.clone === 'function') {
+                    const raw = await ctx.clone().text();
+                    if (raw) {
+                        try {
+                            const j = JSON.parse(raw);
+                            detail += ' | ' + (j.error || j.skipped || j.message || raw.slice(0, 200));
+                        } catch (_) { detail += ' | ' + raw.slice(0, 200); }
+                    }
+                }
+            }
+        } catch (_) { /* تجاهل */ }
+
+        // الدالة غير منشورة/غير موجودة — تُكتشف من داخل error وليس من throw
+        if (/\b404\b/.test(detail) || /Failed to send a request to the Edge Function/i.test(detail)) {
+            throw new Error('الدالة misar-founder-notify غير منشورة على Supabase (404). ' +
+                'انشرها من جذر المشروع بالأمر: supabase functions deploy misar-founder-notify ' +
+                '--project-ref wwojtkxwmgkrudtevbcb --use-api | تفاصيل: ' + detail);
+        }
+
+        // رفض من Meta لأسباب التسعير/الرسوم (131042 أو "495 (27%)")
+        if (/131042|\b495\b/.test(detail)) {
+            throw new Error('رفضت Meta إرسال الرسالة لأسباب تتعلق بالرسوم/التسعير (131042). ' +
+                'تحقق من طريقة الدفع في WhatsApp Business، وأن رسالة النص الحر تُرسل خلال 24 ساعة من آخر رسالة للمؤسس. التفاصيل: ' + detail);
+        }
+
+        // ترجمة حالات المصادقة إلى رسالة مفهومة
+        if (/\b401\b/.test(detail)) {
+            throw new Error('رفض الخادم الطلب (401): جلستك غير صالحة أو منتهية. سجّل الخروج ثم الدخول مرة أخرى.');
+        }
+        if (/\b403\b/.test(detail)) {
+            throw new Error('رفض الخادم الطلب (403): هذا الحساب ليس مؤسساً، لا يمكنه إرسال إشعارات المؤسس.');
+        }
+        throw new Error(detail);
+    }
+
+    return data;
+}
+
+// ============================================================
+// تصدير جميع الدوال العامة
+// ============================================================
+window.supabaseClient = supabaseClient;
+window.appState = appState;
+window.compressImage = compressImage;
+window.uploadProductImages = uploadProductImages;
+window.uploadReviewImages = uploadReviewImages;
+window.uploadReviewVideo = uploadReviewVideo;
+window.canReviewProduct = canReviewProduct;
+window.hasUserReviewed = hasUserReviewed;
+window.getUserReview = getUserReview;
+window.upsertReview = upsertReview;
+window.updateProductRatingStats = updateProductRatingStats;
+window.loadProductReviews = loadProductReviews;
+window.getReviewStats = getReviewStats;
+window.markReviewHelpful = markReviewHelpful;
+window.getHelpfulCount = getHelpfulCount;
+window.showScreen = showScreen;
+window.goBack = goBack;
+window.skipLogin = skipLogin;
+window.openLocationSettings = openLocationSettings;
+window.setBearExpression = setBearExpression;
+window.showBearReaction = showBearReaction;
+window.showLoading = showLoading;
+window.showToast = showToast;
+window.escapeHTML = escapeHTML;
+
+// ============================================================
+// بانر تشخيصي لحساب المؤسس
+// يظهر فقط لبريد المؤسس عندما لا يُقرأ نوع الحساب كـ 'founder'،
+// ويشرح السبب الفعلي (صف مفقود / نوع خاطئ / حجب RLS) مع الحل.
+// ============================================================
+window.showFounderDiagBanner = function (diag) {
+    try {
+        const old = document.getElementById('founderDiagBanner');
+        if (old) old.remove();
+
+        let reason, action;
+        if (diag.source.indexOf('فشلت القراءة') !== -1) {
+            reason = 'لا يمكن قراءة صفك في جدول user_data (RLS يمنع القراءة أو الجدول غير متاح).';
+            action = 'شغّل سكربت FIX_dashboard_not_hiding_aljylanym.sql في Supabase SQL Editor (يُصلح RLS والحماية).';
+        } else if (diag.source.indexOf('الصف غير موجود') !== -1) {
+            reason = 'صفك غير موجود أصلاً في جدول user_data.';
+            action = 'شغّل FIX_dashboard_not_hiding_aljylanym.sql لإنشاء الصف بالدور الصحيح.';
+        } else {
+            reason = 'صفك موجود لكن account_type = "' + (diag.account_type || 'غير محدد') + '" / status = "' + (diag.status || 'غير محدد') + '" وليس دوراً له لوحة (seller/delivery/founder).';
+            action = 'شغّل الملف: FIX_dashboard_not_hiding_aljylanym.sql في Supabase SQL Editor.';
+        }
+
+        const box = document.createElement('div');
+        box.id = 'founderDiagBanner';
+        box.dir = 'rtl';
+        box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b71c1c;color:#fff;padding:14px 18px;font-family:inherit;font-size:0.9rem;line-height:1.7;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+        box.innerHTML =
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;max-width:1100px;margin:0 auto;">' +
+              '<div>' +
+                '<strong style="font-size:1rem;">⚠️ لوحة المؤسس مخفية — السبب الحقيقي:</strong><br>' +
+                '<span>' + reason + '</span><br>' +
+                '<span style="background:rgba(255,255,255,0.15);padding:3px 8px;border-radius:6px;display:inline-block;margin-top:6px;direction:ltr;text-align:left;">' + action + '</span><br>' +
+                '<small style="opacity:0.85;">التفاصيل الكاملة في Console: <code>__founderDiag</code></small>' +
+              '</div>' +
+              '<button onclick="this.parentElement.parentElement.remove()" style="background:#fff;color:#b71c1c;border:none;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;">إغلاق</button>' +
+            '</div>';
+        document.body.appendChild(box);
+    } catch (e) { console.warn('فشل عرض بانر التشخيص:', e); }
+};
+
+window.signInWithGoogle = signInWithGoogle;
+window.applyPendingAccountType = applyPendingAccountType;
+window.signInWithEmail = signInWithEmail;
+window.signUpWithEmail = signUpWithEmail;
+window.logout = logout;
+window.switchAccount = switchAccount;
+window.confirmLogout = confirmLogout;
+window.saveProfile = saveProfile;
+window.showChangePasswordModal = showChangePasswordModal;
+window.showSecurityModal = showSecurityModal;
+window.closeModal = closeModal;
+window.changePassword = changePassword;
+window.saveSecuritySettings = saveSecuritySettings;
+window.openChatbot = openChatbot;
+window.openMisarTechChat = openMisarTechChat;
+window.closeChatbot = closeChatbot;
+window.copyMisarTechLink = copyMisarTechLink;
+window.sendMessage = sendMessage;
+window.sendSuggestion = sendSuggestion;
+window.openFounderProfile = openFounderProfile;
+window.closeFounderProfile = closeFounderProfile;
+window.openFounderFullProfile = openFounderFullProfile;
+window.closeFounderFullProfile = closeFounderFullProfile;
+window.contactDeveloper = contactDeveloper;
+window.openImageModal = openImageModal;
+window.closeImageModal = closeImageModal;
+window.shareFounderPage = shareFounderPage;
+window.trackShare = trackShare;
+window.loadShareCounts = loadShareCounts;
+window.getFounderShareLink = getFounderShareLink;
+window.refreshFounderStats = refreshFounderStats;
+window.approveDeliveryPerson = approveDeliveryPerson;
+window.rejectDeliveryPerson = rejectDeliveryPerson;
+window.loadPendingDeliveries = loadPendingDeliveries;
+window.loadUserData = loadUserData;
+window.updateUserInfo = updateUserInfo;
+window.updateWelcomeLocation = updateWelcomeLocation;
+window.updateProfileLocation = updateProfileLocation;
+window.saveLocation = saveLocation;
+window.loadUnreadNotificationsCount = loadUnreadNotificationsCount;
+window.setupRealtimeSubscriptions = setupRealtimeSubscriptions;
+window.sendNotification = sendNotification;
+window.loadGlobalFounderVisibility = loadGlobalFounderVisibility;
+window.initFounderSettings = initFounderSettings;
+window.handleToggleChange = handleToggleChange;
+window.generateOTP = generateOTP;
+window.loadFounderStats = loadFounderStats;
+window.trackFounderView = trackFounderView;
+window.populateGovernorateSelect = populateGovernorateSelect;
+window.populateCenterSelect = populateCenterSelect;
+window.getLocationSettings = getLocationSettings;
+window.saveLocationSettings = saveLocationSettings;
+window.getAvailableGovernorates = getAvailableGovernorates;
+window.getAvailableCenters = getAvailableCenters;
+window.clearLocationSettingsCache = clearLocationSettingsCache;
+// ⚠️ الدالة معرّفة في admin-locations.js (مش بيتحمّل في كل الصفحات مثل product.html)؛
+// تسييبها بدون حماية كانت بتسبب ReferenceError بيقطع تنفيذ الملف كله
+// وخلّي صفحة تفاصيل المنتج تفضل بيضاء (المشكلة: رابط المنتج المشترك).
+try { window.initFounderLocationsAdmin = initFounderLocationsAdmin; } catch (e) { console.warn('initFounderLocationsAdmin غير متاح في هذه الصفحة (طبيعي)'); }
+window.setupCheckoutLocationSelectors = setupCheckoutLocationSelectors;
+window.fillCheckoutFormFromUserData = fillCheckoutFormFromUserData;
+window.saveAddressAsDefaultIfRequested = saveAddressAsDefaultIfRequested;
+
+// ===== تصدير دوال المؤسس CRUD =====
+window.getAllDeliveries = getAllDeliveries;
+window.updateDeliveryStatus = updateDeliveryStatus;
+window.deleteDelivery = deleteDelivery;
+window.getAllClients = getAllClients;
+window.updateClientStatus = updateClientStatus;
+window.deleteClient = deleteClient;
+window.getAllSellers = getAllSellers;
+window.updateSellerStatus = updateSellerStatus;
+window.getAllProductsAdmin = getAllProductsAdmin;
+window.updateProductStatusAdmin = updateProductStatusAdmin;
+window.deleteProductAdmin = deleteProductAdmin;
+window.getAllProperties = getAllProperties;
+window.saveProperty = saveProperty;
+window.updatePropertyStatus = updatePropertyStatus;
+window.deleteProperty = deleteProperty;
+window.getAllServices = getAllServices;
+window.saveService = saveService;
+window.deleteService = deleteService;
+window.getAllOrdersAdmin = getAllOrdersAdmin;
+window.updateOrderStatusAdmin = updateOrderStatusAdmin;
+window.getAllReports = getAllReports;
+window.updateReportStatus = updateReportStatus;
+window.logActivity = logActivity;
+window.getAllActivityLogs = getAllActivityLogs;
+window.sendBulkNotification = sendBulkNotification;
+window.getAppSettings = getAppSettings;
+window.saveAppSettings = saveAppSettings;
+window.getNotificationSettings = getNotificationSettings;
+window.saveNotificationSettings = saveNotificationSettings;
+window.getFounderNotificationLog = getFounderNotificationLog;
+window.testFounderNotificationLink = testFounderNotificationLink;
