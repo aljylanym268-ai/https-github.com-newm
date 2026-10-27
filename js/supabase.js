@@ -3133,7 +3133,10 @@ window.saveLocationSettings = saveLocationSettings;
 window.getAvailableGovernorates = getAvailableGovernorates;
 window.getAvailableCenters = getAvailableCenters;
 window.clearLocationSettingsCache = clearLocationSettingsCache;
-window.initFounderLocationsAdmin = initFounderLocationsAdmin;
+// ⚠️ الدالة معرّفة في admin-locations.js (مش بيتحمّل في كل الصفحات مثل product.html)؛
+// تسييبها بدون حماية كانت بتسبب ReferenceError بيقطع تنفيذ الملف كله
+// وخلّي صفحة تفاصيل المنتج تفضل بيضاء (المشكلة: رابط المنتج المشترك).
+try { window.initFounderLocationsAdmin = initFounderLocationsAdmin; } catch (e) { console.warn('initFounderLocationsAdmin غير متاح في هذه الصفحة (طبيعي)'); }
 window.setupCheckoutLocationSelectors = setupCheckoutLocationSelectors;
 window.fillCheckoutFormFromUserData = fillCheckoutFormFromUserData;
 window.saveAddressAsDefaultIfRequested = saveAddressAsDefaultIfRequested;

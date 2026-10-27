@@ -83,6 +83,14 @@ async function misarPushSaveSubscription(subscription) {
         throw new Error('بيانات اشتراك Push غير مكتملة من المتصفح.');
     }
 
+    // الصف القديم بنفس endpoint قد ينتمي لحساب آخر على نفس الجهاز.
+    // upsert المباشر سيفشل على سياسة UPDATE، لذا نحذف الصف القديم أولاً ثم ندرج جديداً.
+    const { error: cleanupError } = await supabaseClient.from('push_subscriptions')
+        .delete()
+        .eq('endpoint', serialized.endpoint)
+        .neq('user_id', appState.user.id);
+    if (cleanupError) console.warn('تعذر حذف اشتراك Push قديم:', cleanupError.message);
+
     const { error } = await supabaseClient.from('push_subscriptions').upsert({
         user_id: appState.user.id,
         endpoint: serialized.endpoint,
@@ -180,6 +188,11 @@ async function notifySellerPushOrder(orderId) {
 
 async function misarPushPersistChangedSubscription(subscriptionJson) {
     if (!appState.user || !subscriptionJson?.endpoint) return;
+    const { error: cleanupError } = await supabaseClient.from('push_subscriptions')
+        .delete()
+        .eq('endpoint', subscriptionJson.endpoint)
+        .neq('user_id', appState.user.id);
+    if (cleanupError) console.warn('تعذر حذف اشتراك Push قديم:', cleanupError.message);
     const { error } = await supabaseClient.from('push_subscriptions').upsert({
         user_id: appState.user.id,
         endpoint: subscriptionJson.endpoint,

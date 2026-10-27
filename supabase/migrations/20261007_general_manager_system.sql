@@ -106,7 +106,7 @@ AS $$
     );
 $$;
 
--- (هـ) توافق خلفي: تشمل المؤسس + 'admin' القديم + المدير العام النشط.
+-- (هـ) توافق خلفي للمؤسس + 'admin' القديم فقط؛ صلاحيات المدير تُفحص منفصلة.
 --     مهم: لو حذفنا 'admin' تفقد كل سياسات RLS المبنية على هذه الدالة
 --     وصول المؤسس إلى صفوف user_data فيختفي كل المستخدمين من اللوحة.
 CREATE OR REPLACE FUNCTION public.misar_is_founder_or_admin()
@@ -120,14 +120,13 @@ AS $$
     SELECT 1 FROM public.user_data u
     WHERE u.id = (select auth.uid())
       AND u.account_type IN ('founder', 'admin')
-  )
-  OR public.misar_is_general_manager();
+  );
 $$;
 
 -- ============================================================
 -- 2) حماية المؤسس — قاعدة ذهبية على مستوى قاعدة البيانات
---    لا يمكن لأي غير مؤسس أن يغيّر account_type لصف يحمل founder،
---    ولا أن ينشئ صفاً بـ account_type = 'founder'.
+--    لا يمكن لأي غير مؤسس أن يغيّر account_type أو status،
+--    ولا أن ينشئ حساباً مؤسساً أو مديراً عاماً أو admin.
 --    تُفرض عبر Trigger (يمنع التصعيد حتى لو تجاوز أحد الواجهة).
 -- ============================================================
 
@@ -144,17 +143,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- منع التصعيد فقط: أي غير مؤسس لا يرقّي حساباً إلى founder.
+  -- لا نسمح إلا للمؤسس بتعيين الأدوار أو حالات الاعتماد.
   IF (public.misar_is_founder() IS NOT TRUE) THEN
-
-    -- (1) لا إنشاء مؤسس
-    IF (TG_OP = 'INSERT' AND NEW.account_type = 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: إنشاء حساب مؤسس يتطلب صلاحية المؤسس.';
+    IF TG_OP = 'INSERT' AND NEW.account_type IN ('founder', 'general_manager', 'admin') THEN
+      RAISE EXCEPTION 'غير مسموح: تعيين دور مميز يتطلب صلاحية المؤسس.';
     END IF;
-
-    -- (2) لا ترقية أي حساب إلى مؤسس
-    IF (TG_OP = 'UPDATE' AND NEW.account_type = 'founder' AND OLD.account_type <> 'founder') THEN
-      RAISE EXCEPTION 'غير مسموح: ترقية حساب إلى مؤسس.';
+    IF TG_OP = 'UPDATE' AND NEW.account_type IS DISTINCT FROM OLD.account_type THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير دور الحساب يتطلب صلاحية المؤسس.';
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'غير مسموح: تغيير حالة الاعتماد يتطلب صلاحية المؤسس.';
     END IF;
 
   END IF;
@@ -213,11 +211,13 @@ USING (
   public.misar_gm_can('users', 'edit')
   AND account_type <> 'founder'          -- لا يلمس المؤسس أبداً
   AND account_type <> 'general_manager'  -- ولا يعدّل مدراء آخرين
+  AND account_type <> 'admin'
 )
 WITH CHECK (
   public.misar_gm_can('users', 'edit')
   AND account_type <> 'founder'
   AND account_type <> 'general_manager'
+  AND account_type <> 'admin'
 );
 
 -- ============================================================
