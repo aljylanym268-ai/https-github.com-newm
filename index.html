@@ -728,6 +728,7 @@
             <button class="founder-tab" data-tab="notification-control" onclick="switchFounderTab('notification-control')"><i class="fas fa-sliders-h"></i> مركز التحكم في الإشعارات</button>
             <button class="founder-tab" data-tab="banners" onclick="switchFounderTab('banners')"><i class="fas fa-image"></i> إدارة الإعلانات</button>
             <button class="founder-tab" data-tab="locations" onclick="switchFounderTab('locations')"><i class="fas fa-map-marked-alt"></i> إدارة المواقع</button>
+            <button class="founder-tab" data-tab="founder-notes" onclick="switchFounderTab('founder-notes')"><i class="fas fa-sticky-note"></i> الملاحظات</button>
             <button class="founder-tab" data-tab="general-manager" onclick="switchFounderTab('general-manager')"><i class="fas fa-user-tie"></i> المدير العام</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
             <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
@@ -1079,6 +1080,69 @@
                 </div>
             </div>
 
+            <!-- تبويب ملاحظات المؤسس -->
+            <div id="tab-founder-notes" class="founder-tab-panel">
+                <div class="founder-card">
+                    <h3><i class="fas fa-sticky-note"></i> ملاحظات المؤسس</h3>
+                    <p style="color:#666; font-size:0.9rem;">اكتب ملاحظات بتفاصيل كاملة (تعليمات للمدير العام، مهام، قرارات إدارية...). المدير العام يراها في لوحته <b>للقراءة فقط</b>، ولا يستطيع تعديلها أو حذفها.</p>
+                    <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+                        <input type="text" id="fnTitle" class="input-field" placeholder="عنوان الملاحظة (مثال: تعليمات بشأن تعديل صلاحيات المدير العام)" maxlength="120">
+                        <textarea id="fnBody" class="input-field" rows="7" placeholder="اكتب التفاصيل الكاملة هنا..."></textarea>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="fnPriority" class="input-field" style="width:auto;">
+                                <option value="low">أولوية: منخفضة</option>
+                                <option value="normal" selected>أولوية: عادية</option>
+                                <option value="high">أولوية: هامة</option>
+                                <option value="critical">أولوية: حرجة</option>
+                            </select>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:0.9rem; color:#444;">
+                                <input type="checkbox" id="fnPinned" style="width:18px; height:18px;"> تثبيت في الأعلى (تظهر أولاً للمدير العام)
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <label style="font-size:0.9rem; color:#1a237e; font-weight:700;"><i class="fas fa-eye"></i> مين يشوف الملاحظة؟</label>
+                            <select id="fnAudience" class="input-field" style="width:auto;" onchange="fnAudienceChanged()">
+                                <option value="only_me">ليّا أنا فقط (بدون المدراء)</option>
+                                <option value="all" selected>كل المدراء</option>
+                                <option value="specific">مدير محدد…</option>
+                            </select>
+                        </div>
+                        <div id="fnSpecificWrap" style="display:none; gap:8px; flex-wrap:wrap; background:#f0f2f5; padding:10px; border-radius:12px;">
+                            <span style="font-size:0.85rem; color:#555; width:100%;"><i class="fas fa-user-check"></i> اختر المدراء الذين سيرون هذه الملاحظة:</span>
+                            <div id="fnSpecificUsers" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="login-btn" id="fnSaveBtn" onclick="fnSaveNote()"><i class="fas fa-save"></i> حفظ الملاحظة</button>
+                            <button class="google-btn" id="fnCancelEdit" style="display:none;" onclick="fnCancelEdit()">إلغاء التعديل</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:18px;">
+                    <h4><i class="fas fa-list"></i> الملاحظات (<span id="fnCount">0</span>)</h4>
+                    <div id="fnList"><p style="text-align:center;color:#666;padding:24px;">جاري التحميل...</p></div>
+                </div>
+
+                <div class="founder-card" style="margin-top:22px; border-right:4px solid #7c4dff;">
+                    <h4><i class="fas fa-robot"></i> محادثة المشورة مع MISAR AI</h4>
+                    <p style="color:#666; font-size:0.85rem;">اسأل الذكاء الاصطناعي عن صياغة الملاحظة، ترتيب الأولويات، أو أي قرار إداري — يقرأ نص الملاحظة الجاري كتابتها وبيانات المنصة ويقترح عليك التحسينات قبل الحفظ.</p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; align-items:center;">
+                        <span style="font-size:0.8rem; color:#888;"><i class="fas fa-lightbulb"></i> اضغط على اقتراح لوضعه في مربع الكتابة:</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                        <button class="filter-btn" style="padding:6px 14px; border-radius:20px; font-size:0.85rem; background:#f3e8ff; color:#6a1b9a; border:1px solid #e1bee7;" onclick="fnChipToInput('صغّل لي الملاحظة دي بشكل تعليمات واضحة ومنظمة للمدير العام')"><i class="fas fa-pen"></i> صياغة تعليمات</button>
+                        <button class="filter-btn" style="padding:6px 14px; border-radius:20px; font-size:0.85rem; background:#f3e8ff; color:#6a1b9a; border:1px solid #e1bee7;" onclick="fnChipToInput('إيه رأيك في أولوية الملاحظة دي؟ هل تستحق ترفيع للأولوية الحرجة؟')"><i class="fas fa-balance-scale"></i> تقييم الأولوية</button>
+                        <button class="filter-btn" style="padding:6px 14px; border-radius:20px; font-size:0.85rem; background:#f3e8ff; color:#6a1b9a; border:1px solid #e1bee7;" onclick="fnChipToInput('لخص لي أهم النقاط اللي المفروض يركز عليها المدير العام من الملاحظة دي')"><i class="fas fa-list-ul"></i> تلخيص للمدير</button>
+                        <button class="filter-btn" style="padding:6px 14px; border-radius:20px; font-size:0.85rem; background:#f3e8ff; color:#6a1b9a; border:1px solid #e1bee7;" onclick="fnChipToInput('بناءً على بيانات المنصة الحالية، إيه أهم ملاحظة إدارية محتاج أكتبها دلوقتي؟')"><i class="fas fa-chart-line"></i> ملاحظة مقترحة</button>
+                        <button class="filter-btn" style="padding:6px 14px; border-radius:20px; font-size:0.85rem; background:#f3e8ff; color:#6a1b9a; border:1px solid #e1bee7;" onclick="fnChipToInput('راجع الملاحظة دي وأقترح تعديلات تحسّن وضوحها وفعاليتها')"><i class="fas fa-search"></i> مراجعة وتحسين</button>
+                    </div>
+                    <div id="fnAiChatMessages" style="max-height:360px; overflow-y:auto; background:linear-gradient(180deg,#fafafa,#f5f3ff); border:1px solid #e1bee7; border-radius:14px; padding:14px; margin:10px 0;"></div>
+                    <div style="display:flex; gap:8px; align-items:center; background:#fff; border:1px solid #e1bee7; border-radius:30px; padding:6px 6px 6px 18px;">
+                        <input type="text" id="fnAiChatInput" class="input-field" style="flex:1; border:none; box-shadow:none; padding:8px;" placeholder="اسأل MISAR AI...">
+                        <button class="login-btn" style="width:auto; padding:10px 18px; background:#7c4dff; border-radius:50%;" onclick="noteAiSend()" title="إرسال"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+
             <!-- تبويب مركز التحكم في الإشعارات -->
             <div id="tab-notification-control" class="founder-tab-panel">
                 <div class="founder-card">
@@ -1134,7 +1198,28 @@
                 </div>
             </div>
 
-            <!-- تبويب طلبات MISAR TECH (المؤسس) -->
+            <!-- محادثة مباشرة مع المدير العام -->
+            <div class="founder-card" id="fnGmChatCard" style="margin-top:22px; border-right:4px solid #00897b;">
+                <h4><i class="fas fa-comments"></i> محادثة مباشرة مع المدير العام</h4>
+                <p style="color:#666; font-size:0.85rem;">اختر مديراً لبدء محادثة فورية. يمكنك فتح المحادثة أو إغلاقها في أي وقت — عند الإغلاق لا يستطيع المدير الكتابة.</p>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;" id="fnGmChatList"></div>
+
+                <div id="fnChatPanel" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#00897b; color:#fff; padding:8px 14px; border-radius:12px 12px 0 0;">
+                        <span><i class="fas fa-user-tie"></i> محادثة مع: <b id="fnChatPeerName">—</b></span>
+                        <span style="display:flex; gap:6px;">
+                            <button onclick="fnOpenChatAgain()" title="فتح المحادثة" style="background:none; border:none; color:#fff; cursor:pointer; padding:4px 8px;"><i class="fas fa-lock-open"></i></button>
+                            <button onclick="fnCloseGmChat()" title="إغلاق المحادثة (يمنع الكتابة)" style="background:none; border:none; color:#fff; cursor:pointer; padding:4px 8px;"><i class="fas fa-lock"></i></button>
+                            <button onclick="fnMinimizeChat()" title="تصغير" style="background:none; border:none; color:#fff; cursor:pointer; padding:4px 8px;"><i class="fas fa-window-minimize"></i></button>
+                        </span>
+                    </div>
+                    <div id="fnChatMessages" style="max-height:300px; overflow-y:auto; background:#fafafa; border:1px solid #eee; border-top:none; padding:12px; display:flex; flex-direction:column;"></div>
+                    <div style="display:flex; gap:8px; padding:8px; background:#fff; border:1px solid #eee; border-top:none; border-radius:0 0 12px 12px; align-items:center;">
+                        <input type="text" id="fnChatInput" class="input-field" style="flex:1; margin:0;" placeholder="اكتب رسالتك..." onkeypress="if(event.key==='Enter') fnChatSend()">
+                        <button class="login-btn" style="width:auto; padding:8px 16px; background:#00897b;" onclick="fnChatSend()"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
             <div id="tab-misar-tech" class="founder-tab-panel">
                 <div class="founder-toolbar">
                     <div class="search-box"><i class="fas fa-search"></i><input type="text" id="mtSearchInput" placeholder="ابحث بالاسم أو العنوان..." oninput="renderMisarTechAdminTable()"></div>
@@ -1169,6 +1254,7 @@
             <button class="back-btn" onclick="showScreen('homeScreen')"><i class="fas fa-arrow-right"></i></button>
             <h1>لوحة المدير العام</h1>
             <div class="header-actions">
+                <button class="header-icon" onclick="gmOpenMyChat()" title="محادثة المؤسس"><i class="fas fa-comments"></i></button>
                 <button class="header-icon" onclick="misarSwitchGmTab(document.querySelector('#gmTabs .founder-tab.active')?.dataset.tab || 'dashboard')" title="تحديث"><i class="fas fa-sync-alt"></i></button>
             </div>
         </div>
@@ -1308,6 +1394,11 @@
                 <div class="founder-stats-grid" id="gmReportsGrid"></div>
             </div>
 
+            <!-- ملاحظات المؤسس (قراءة فقط للمدير العام) -->
+            <div id="gm-tab-founder_notes" class="gm-tab-panel founder-tab-panel">
+                <div id="gmFounderNotesList"><p style="text-align:center;color:#666;padding:24px;">جاري التحميل...</p></div>
+            </div>
+
             <!-- سجل النشاط -->
             <div id="gm-tab-activity_logs" class="gm-tab-panel founder-tab-panel">
                 <div class="founder-card">
@@ -1352,6 +1443,21 @@
         </div>
 
     </div> <!-- end generalManagerDashboardScreen -->
+
+    <!-- ====== مودال محادثة المدير العام مع المؤسس ====== -->
+    <div class="modal" id="gmChatModal" onclick="if(event.target===this) gmCloseMyChat()">
+        <div class="modal-content" style="max-width:520px; width:94%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#00897b; color:#fff; padding:10px 16px; border-radius:12px 12px 0 0; margin:-20px -20px 12px;">
+                <span><i class="fas fa-crown"></i> محادثة مع المؤسس</span>
+                <button onclick="gmCloseMyChat()" style="background:none; border:none; color:#fff; cursor:pointer; font-size:1.1rem;"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="gmChatMessages" style="max-height:320px; overflow-y:auto; background:#fafafa; border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="gmChatInput" class="input-field" style="flex:1; margin:0;" placeholder="اكتب رسالتك للمؤسس...">
+                <button class="login-btn" id="gmChatSendBtn" style="width:auto; padding:8px 16px; background:#00897b;" onclick="fnChatSend()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
 
     <!-- ====== مودال نشاط المدير العام (للمؤسس) ====== -->
     <div class="modal" id="gmActivityModal" onclick="if(event.target===this) closeGmActivityModal()">
@@ -1779,6 +1885,8 @@
 <script src="js/admin-banners.js"></script>
 <script src="js/admin-locations.js"></script>
 <script src="js/general-manager.js"></script>
+<script src="js/founder-notes.js"></script>
+<script src="js/gm-chat.js"></script>
 <script src="js/banners.js"></script>
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>

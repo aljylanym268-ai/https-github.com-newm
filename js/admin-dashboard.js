@@ -161,6 +161,7 @@ window.switchFounderTab = function (tabId) {
         case 'locations': if (typeof initFounderLocationsAdmin === 'function') initFounderLocationsAdmin(); break;
         case 'returns': if (typeof displayFounderReturns === 'function') displayFounderReturns(); break;
         case 'online': if (typeof initFounderOnlineTab === 'function') initFounderOnlineTab(); break;
+        case 'founder-notes': if (typeof initFounderNotes === 'function') initFounderNotes(); break;
         case 'general-manager': if (typeof misarRenderGmAdminPanel === 'function') misarRenderGmAdminPanel(); break;
         case 'notification-control': if (typeof initFounderControlCenter === 'function') initFounderControlCenter(); break;
     }

@@ -64,6 +64,7 @@ node _gm_security_test.mjs
 | القسم | الإجراءات |
 |---|---|
 | نظرة عامة `dashboard` | view |
+| ملاحظات المؤسس `founder_notes` | view |
 | الطلبات `orders` | view / create / edit / delete |
 | المنتجات `products` | view / create / edit / delete |
 | الخدمات `services` | view / create / edit / delete |
@@ -79,6 +80,17 @@ node _gm_security_test.mjs
 | الإعدادات `settings` | view / edit |
 
 **افتراضياً:** المدير العام يملك `view` لمعظم الأقسام، و**لا يملك** أي `edit` أو `delete` حتى تمنحه أنت إياها.
+
+---
+
+## 📝 ملاحظات المؤسس (Founder Notes)
+
+يستطيع المؤسس كتابة **ملاحظات بتفاصيل كثيرة** (عنوان + نص طويل + أولوية منخفضة/عادية/هامة/حرجة + تثبيت في الأعلى)، وتظهر للمدير العام في لوحته داخل تبويب **«ملاحظات المؤسس»** — **للقراءة فقط**.
+
+- كل ملاحظة تُظهر: عنوان، أولوية، النص الكامل (الأسطر محفوظة)، وقت الإنشاء، وقت آخر تعديل، ومن قام بالتعديل.
+- التخزين: `app_settings` بالمفتاح `founder_notes_v1` (نص JSON).
+- الحماية: الكتابة للمؤسس فقط (تحقق في الكود + المفتاح محمي في `misar_app_settings_is_protected_key` عبر `FIX_protect_founder_notes.sql`). المدير العام لا يستطيع التعديل أو الحذف ولا حتى عبر DevTools (RLS يرفض على مستوى DB).
+- تعديل صلاحية عرض الملاحظات لأي مدير: من شبكة الصلاحيات → قسم **«ملاحظات المؤسس» → عرض**.
 
 ---
 
@@ -101,6 +113,8 @@ node _gm_security_test.mjs
 | `general_manager_system.sql` | SQL الأمان الأساسي (RLS + دوال + Trigger حماية المؤسس) |
 | `supabase/migrations/20261007_general_manager_system.sql` | نفس الملف كـ migration للـ CLI |
 | `js/general-manager.js` | منطق المدير العام + الصلاحيات + لوحة المؤسس |
+| `js/founder-notes.js` | نظام ملاحظات المؤسس (كتابة للمؤسس + عرض فقط للمدير العام) |
+| `FIX_protect_founder_notes.sql` | حماية مفتاح `founder_notes_v1` من التعديل بواسطة المدير العام |
 | `_gm_security_test.mjs` | فحص منع تصعيد الصلاحيات |
 
 ## ⚙️ الإعدادات المخزَّنة (في `app_settings`)

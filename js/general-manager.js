@@ -16,6 +16,7 @@ const MISAR_GM_SECTIONS = [
     { key: 'dashboard', label: 'نظرة عامة', icon: 'fas fa-chart-pie', actions: ['view'] },
     { key: 'orders', label: 'الطلبات', icon: 'fas fa-shopping-cart', actions: ['view', 'create', 'edit', 'delete'] },
     { key: 'misar_tech', label: 'طلبات MISAR TECH', icon: 'fas fa-code', actions: ['view', 'edit'] },
+    { key: 'founder_notes', label: 'ملاحظات المؤسس', icon: 'fas fa-sticky-note', actions: ['view'] },
     { key: 'products', label: 'المنتجات', icon: 'fas fa-boxes', actions: ['view', 'create', 'edit', 'delete'] },
     { key: 'services', label: 'الخدمات', icon: 'fas fa-concierge-bell', actions: ['view', 'create', 'edit', 'delete'] },
     { key: 'users', label: 'المستخدمون', icon: 'fas fa-users', actions: ['view', 'edit'] },
@@ -36,6 +37,7 @@ const MISAR_GM_ACTION_LABELS = { view: 'عرض', create: 'إنشاء', edit: 'ت
 const MISAR_GM_DEFAULT_PERMS = {
     dashboard: { view: true },
     orders: { view: true, create: false, edit: false, delete: false },
+    founder_notes: { view: true },
     misar_tech: { view: true, edit: false },
     products: { view: true, create: false, edit: false, delete: false },
     services: { view: true, create: false, edit: false, delete: false },
@@ -850,6 +852,7 @@ window.misarSwitchGmTab = async function (tabId) {
             case 'dashboard': await misarRenderGmStats(); break;
             case 'orders': if (typeof loadOrdersTableAdmin === 'function') await loadOrdersTableAdmin(); break;
             case 'misar_tech': if (typeof loadMisarTechRequests === 'function') await loadMisarTechRequests(); break;
+            case 'founder_notes': if (typeof renderFounderNotesForGm === 'function') await renderFounderNotesForGm(); break;
             case 'products': if (typeof loadProductsTableAdmin === 'function') await loadProductsTableAdmin(); break;
             case 'services': if (typeof loadServicesTableAdmin === 'function') await loadServicesTableAdmin(); break;
             case 'users': if (typeof loadCustomersTable === 'function') await loadCustomersTable(); break;
