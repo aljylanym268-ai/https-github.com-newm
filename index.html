@@ -730,6 +730,7 @@
             <button class="founder-tab" data-tab="locations" onclick="switchFounderTab('locations')"><i class="fas fa-map-marked-alt"></i> إدارة المواقع</button>
             <button class="founder-tab" data-tab="founder-notes" onclick="switchFounderTab('founder-notes')"><i class="fas fa-sticky-note"></i> الملاحظات</button>
             <button class="founder-tab" data-tab="general-manager" onclick="switchFounderTab('general-manager')"><i class="fas fa-user-tie"></i> المدير العام</button>
+            <button class="founder-tab" data-tab="gm-chat" onclick="switchFounderTab('gm-chat')"><i class="fas fa-comments"></i> محادثة المدير</button>
             <button class="founder-tab" data-tab="settings" onclick="switchFounderTab('settings')"><i class="fas fa-cog"></i> الإعدادات</button>
             <button class="founder-tab" data-tab="returns" onclick="switchFounderTab('returns')"><i class="fas fa-undo-alt"></i> المرتجعات</button>
             <button class="founder-tab" data-tab="online" onclick="switchFounderTab('online')"><i class="fas fa-signal"></i> المتصلون الآن</button>
@@ -1198,6 +1199,8 @@
                 </div>
             </div>
 
+            <!-- تبويب المحادثة المباشرة مع المدير العام -->
+            <div id="tab-gm-chat" class="founder-tab-panel">
             <!-- محادثة مباشرة مع المدير العام -->
             <div class="founder-card" id="fnGmChatCard" style="margin-top:22px; border-right:4px solid #00897b;">
                 <h4><i class="fas fa-comments"></i> محادثة مباشرة مع المدير العام</h4>
@@ -1219,6 +1222,7 @@
                         <button class="login-btn" style="width:auto; padding:8px 16px; background:#00897b;" onclick="fnChatSend()"><i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
+            </div>
             </div>
             <div id="tab-misar-tech" class="founder-tab-panel">
                 <div class="founder-toolbar">
@@ -1886,7 +1890,7 @@
 <script src="js/admin-locations.js"></script>
 <script src="js/general-manager.js"></script>
 <script src="js/founder-notes.js"></script>
-<script src="js/gm-chat.js"></script>
+<script src="js/gm-chat.js?v=20261028-1"></script>
 <script src="js/banners.js"></script>
 <script src="js/products.js"></script>
 <script src="js/product.js"></script>
@@ -2237,6 +2241,7 @@ if (session) {
             case 'orders': if (typeof loadOrdersTableAdmin === 'function') loadOrdersTableAdmin(); break;
             case 'misar-tech': if (typeof loadMisarTechRequests === 'function') loadMisarTechRequests(); break;
             case 'reports': if (typeof loadReportsTable === 'function') loadReportsTable(); break;
+            case 'gm-chat': if (typeof initFounderGmChat === 'function') initFounderGmChat(); break;
 case 'logs': if (typeof loadLogsTable === 'function') loadLogsTable(); break;
             case 'banners': if (typeof refreshBannersAdmin === 'function') refreshBannersAdmin(); break;
             case 'locations': if (typeof initFounderLocationsAdmin === 'function') initFounderLocationsAdmin(); break;
