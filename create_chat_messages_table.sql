@@ -80,6 +80,20 @@ FOR DELETE
 TO authenticated
 USING (sender_id = auth.uid());
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime'
+          AND schemaname = 'public'
+          AND tablename = 'chat_messages'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+    END IF;
+END
+$$;
+
 -- ============================================================
 -- 4) إعادة تحميل مخطط PostgREST حتى تتعرف الواجهة على الجدول فوراً
 -- ============================================================
