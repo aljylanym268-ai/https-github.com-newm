@@ -1330,6 +1330,11 @@ async function loadUserData() {
         await updateCartBadgeFromDB();
         await loadUnreadNotificationsCount();
         setupRealtimeSubscriptions();
+        // مستمع محادثة المؤسس ↔ المدير العام (فتح تلقائي عند رسالة جديدة)
+        try {
+            if (typeof initGmChatListener === 'function') initGmChatListener();
+            if (typeof initFounderGmChat === 'function') initFounderGmChat();
+        } catch (e) { console.warn('gm-chat init error:', e); }
 
     } catch (error) {
         console.error('loadUserData error:', error);
