@@ -711,7 +711,11 @@ function toggleZoom() {
 // ========== مشاركة المنتج ==========
 function shareProduct() {
     if (!appState.currentProduct) return;
-    const url = `${window.location.origin}${window.location.pathname}?id=${appState.currentProduct.id}`;
+    // دائمًا نشارك رابط index.html لأنه الصفحة الوحيدة التي تعالج روابط المنتجات المشتركة
+    const basePath = window.location.pathname.endsWith('/')
+        ? window.location.pathname + 'index.html'
+        : (window.location.pathname.split('/').pop() || 'index.html');
+    const url = `${window.location.origin}${basePath.startsWith('/') ? basePath : '/' + basePath}?id=${appState.currentProduct.id}`;
     const text = `اطلع على منتج ${appState.currentProduct.name} على Misar Systems`;
     if (navigator.share) {
         navigator.share({ title: appState.currentProduct.name, text, url }).catch(() => {});

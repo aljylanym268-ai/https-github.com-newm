@@ -1985,16 +1985,37 @@ if (session) {
             const pushOrderId = urlParams.get('pushOrder');
 
             if (productId) {
-                const product = appState.products.find(p => p.id === productId);
-                if (product) {
-                    appState.currentScreen = 'productDetailScreen';
-                    setTimeout(() => {
-                        document.getElementById('loadingScreen').style.display = 'none';
+                appState.currentScreen = 'productDetailScreen';
+                // مهم: ننتظر تحميل المنتجات من قاعدة البيانات أولاً
+                // (التحميل بيحصل في الخلفية، والقائمة تكون فاضية لمن يفتح الرابط للمرة الأولى
+                // مما كان يسبب صفحة بيضاء لمن يشارك رابط المنتج)
+                if (!appState.products || appState.products.length === 0) {
+                    try { await loadProductsFromDB(); } catch (e) { console.warn(e); }
+                }
+                // نعيد المحاولة مرة أخرى بعد فشل محتمل (شبكة بطيئة)
+                let product = appState.products.find(p => p.id === productId);
+                if (!product && (!appState.products || appState.products.length === 0)) {
+                    await new Promise(r => setTimeout(r, 800));
+                    try { await loadProductsFromDB(); } catch (e) { console.warn(e); }
+                    product = appState.products.find(p => p.id === productId);
+                }
+                const openSharedProduct = () => {
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    if (product) {
                         openProductDetail(product);
-                        // إزالة المعامل من الرابط دون إعادة تحميل الصفحة
-                        const cleanUrl = window.location.pathname + window.location.hash;
-                        window.history.replaceState({}, '', cleanUrl);
-                    }, 1500);
+                    } else {
+                        // لا نترك المستخدم أمام صفحة بيضاء أبداً
+                        showScreen('homeScreen');
+                        showToast('لم نتمكن من فتح هذا المنتج، قد يكون حُذف أو الرابط غير صحيح', 'error');
+                    }
+                    // إزالة المعامل من الرابط دون إعادة تحميل الصفحة
+                    const cleanUrl = window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, '', cleanUrl);
+                };
+                if (product) {
+                    setTimeout(openSharedProduct, 500);
+                } else {
+                    openSharedProduct();
                 }
             } else if (storeId) {
                 appState.currentScreen = 'storeScreen';
@@ -2068,6 +2089,10 @@ if (session) {
         }, 250);
 
         // ======== إضافة مستمع حالة المصادقة ========
+        // مؤشر خروج يدوي (متغير عالمي حتى يستطيع logout() في js/supabase.js رفعه قبل نداء signOut
+        // ولا يعامل حدث SIGNED_OUT التلقائي (مثل فشل تجديد التوكن لانقطاع شبكة لحظي
+        // أثناء نشر تحديث جديد) كخروج فعلي، ويحاول استعادة الجلسة بدلاً من ذلك.
+        window.misarManualSignOut = false;
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session) {
                 // تسجيل الدخول ناجح
@@ -2112,18 +2137,54 @@ if (session) {
             }
 
             if (event === 'SIGNED_OUT') {
-                // تسجيل الخروج
+                // خروج يدوي (من زر الخروج) ⇒ نظف الحالة كالمعتاد.
+                if (window.misarManualSignOut) {
+                    window.misarManualSignOut = false;
+                    appState.user = null;
+                    appState.userData = {};
+                    toggleLoginMenu(false);
+                    toggleSellerMenuItem(false);
+                    toggleDeliveryMenuItem(false);
+                    toggleFounderMenuItem(false);
+                    updateUserInfo(true);
+                    await loadCart();
+                    await updateCartBadgeFromDB();
+                    showScreen('homeScreen');
+                    showToast('تم تسجيل الخروج', 'info');
+                    return;
+                }
+                // خروج تلقائي (ليس بطلب المستخدم) ⇒ غالبًا فشل مؤقت في تجديد
+                // التوكن (شبكة/نشر تحديث). لا نمسح شيئًا؛ نحاول استعادة الجلسة عدة مرات
+                // خلال بضع ثوانٍ قبل أي تنظيف — لأن المكتبة قد تمسح الجلسة من التخزين
+                // ثم يستعيدها بعد نجاح تجديد لاحق.
+                console.warn('ℹ️ SIGNED_OUT تلقائي (فشل تجديد مؤقت؟) — محاولة استعادة الجلسة...');
+                let recoveredUser = null;
+                for (let attempt = 0; attempt < 4; attempt++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    try {
+                        const { data: recovered } = await supabaseClient.auth.getSession();
+                        if (recovered?.session?.user) {
+                            // نتحقق أن الجلسة صحيحة فعلاً لدى الخادم (ليست جلسة ميتة في الذاكرة)
+                            const { data: gd } = await supabaseClient.auth.getUser();
+                            if (gd?.user) { recoveredUser = gd.user; break; }
+                        }
+                    } catch (e) { /* نعيد المحاولة */ }
+                }
+                if (recoveredUser) {
+                    appState.user = { id: recoveredUser.id, email: recoveredUser.email, user_metadata: recoveredUser.user_metadata };
+                    if (!appState.userData?.account_type) await loadUserData();
+                    toggleLoginMenu(true);
+                    console.log('✅ تم استعادة الجلسة بعد خروج تلقائي — المستخدم يبقى مسجلاً.');
+                    return;
+                }
                 appState.user = null;
                 appState.userData = {};
                 toggleLoginMenu(false);
-                toggleSellerMenuItem(false);
-                toggleDeliveryMenuItem(false);
-                toggleFounderMenuItem(false);
                 updateUserInfo(true);
                 await loadCart();
                 await updateCartBadgeFromDB();
                 showScreen('homeScreen');
-                showToast('تم تسجيل الخروج', 'info');
+                showToast('انتهت جلستك لأسباب أمنية، يرجى تسجيل الدخول', 'info');
             }
         });
 

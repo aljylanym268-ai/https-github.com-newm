@@ -29,6 +29,9 @@ const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         const hash = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
         const oauthError = url.searchParams.get('error') || hash.get('error');
         const hadAuthData = url.searchParams.has('code') || hash.has('access_token') || !!oauthError;
+        // مهم: مع detectSessionInUrl + flowType:'pkce' تحتاج مكتبة supabase إلى قراءة ?code=
+        // من الرابط لتبادلها بجلسة. لذلك لا نحذف كود النجاح فورًا (سباق يفسد تسجيل الدخول)،
+        // بل نؤجل تنظيفه حتى بعد اكتمال التبادل. تنظيف الأخطاء يبقى فوريًا.
         if (oauthError) {
             const desc = url.searchParams.get('error_description') || hash.get('error_description') || oauthError;
             console.warn('⚠️ خطأ من مزود المصادقة (OAuth):', desc);
@@ -36,14 +39,20 @@ const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                 showToast('تعذّر تسجيل الدخول عبر Google: ' + decodeURIComponent(desc), 'error');
             }
         }
-        if (hadAuthData) {
-            url.searchParams.delete('code');
-            url.searchParams.delete('error');
-            url.searchParams.delete('error_description');
-            url.searchParams.delete('error_description_encoded');
-            url.hash = '';
-            window.history.replaceState({}, document.title, url.pathname + url.search);
-            console.log('🧹 تم تنظيف رابط OAuth بعد العودة');
+        if (hadAuthData && !oauthError) {
+            // تأجيل تنظيف كود النجاح حتى تنتهي مكتبة supabase من قراءة الرابط وتبادل الكود.
+            setTimeout(() => {
+                try {
+                    const u = new URL(window.location.href);
+                    u.searchParams.delete('code');
+                    u.searchParams.delete('error');
+                    u.searchParams.delete('error_description');
+                    u.searchParams.delete('error_description_encoded');
+                    u.hash = '';
+                    window.history.replaceState({}, document.title, u.pathname + u.search);
+                    console.log('🧹 تم تنظيف رابط OAuth بعد العودة');
+                } catch (e2) { /* تجاهل */ }
+            }, 4000);
         }
     } catch (e) { /* تجاهل */ }
 })();
@@ -1054,6 +1063,9 @@ async function logout(showConfirm = true) {
     if (showConfirm && !confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
     showLoading(true);
     try {
+        // نرفع المؤشر قبل نداء signOut حتى يعرف مستمع onAuthStateChange أن هذا
+        // خروج بمطلب المستخدم وليس فشل تجديد توكن — فلا يحاول استعادة الجلسة المحذوفة.
+        window.misarManualSignOut = true;
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
         sessionStorage.removeItem('pendingAccountType');
