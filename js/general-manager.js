@@ -862,7 +862,7 @@ window.misarSwitchGmTab = async function (tabId) {
             case 'banners': await misarRefreshGmBanners(); break;
             case 'ads': await misarRefreshGmBanners(); break;
             case 'locations': if (typeof misarInitGmLocations === 'function') await misarInitGmLocations(); break;
-            case 'reports': await misarRenderGmStats(); break;
+            case 'reports': await misarRenderGmReports(); break;
             case 'activity_logs': await misarRenderGmActivity(); break;
             case 'settings': await misarRenderGmSettings(); break;
         }
@@ -911,6 +911,106 @@ async function misarRenderGmStats() {
                 window.misarSwitchGmTab(tab);
             }
         });
+    });
+}
+
+// ============================================================
+// قسم الإحصائيات والتقارير (المدير العام)
+// شبكة أرقام + رسوم بيانية + ملخص سريع — يعيد استخدام getFounderStats
+// ============================================================
+let __gmCharts = {};
+async function misarRenderGmReports() {
+    const grid = document.getElementById('gmReportsGrid');
+    if (!grid) return;
+    const stats = (typeof getFounderStats === 'function') ? await getFounderStats() : {};
+    const items = [
+        { icon: 'fas fa-users', label: 'إجمالي المستخدمين', value: stats.totalUsers || 0 },
+        { icon: 'fas fa-store', label: 'البائعين', value: stats.sellers || 0 },
+        { icon: 'fas fa-truck', label: 'المناديب', value: stats.deliveries || 0 },
+        { icon: 'fas fa-shopping-cart', label: 'إجمالي الطلبات', value: stats.totalOrders || 0 },
+        { icon: 'fas fa-plus-circle', label: 'طلبات جديدة', value: stats.newOrders || 0 },
+        { icon: 'fas fa-truck', label: 'قيد التوصيل', value: stats.inDeliveryOrders || 0 },
+        { icon: 'fas fa-check-double', label: 'مكتملة', value: stats.completedOrders || 0 },
+        { icon: 'fas fa-boxes', label: 'المنتجات', value: stats.totalProducts || 0 },
+        { icon: 'fas fa-building', label: 'العقارات', value: stats.totalProperties || 0 },
+        { icon: 'fas fa-concierge-bell', label: 'الخدمات', value: stats.totalServices || 0 }
+    ];
+    grid.innerHTML = items.map(i => `
+        <div class="stat-card-founder">
+            <div class="stat-icon"><i class="${i.icon}"></i></div>
+            <div class="stat-number">${i.value}</div>
+            <div class="stat-label">${i.label}</div>
+        </div>`).join('');
+
+    // رسوم بيانية
+    try {
+        const [{ data: orders }, { data: users }, { data: products }] = await Promise.all([
+            supabaseClient.from('orders').select('status, created_at'),
+            supabaseClient.from('user_data').select('account_type'),
+            supabaseClient.from('products').select('category, id')
+        ]);
+        misarDrawGmChart('gmOrdersStatusChart', 'bar', misarCountBy(orders || [], 'status', 'pending'), ['#ffb300', '#29b6f6', '#66bb6a', '#ef5350', '#8d6e63']);
+        misarDrawGmChart('gmOrdersDailyChart', 'line', misarLast7Days(orders || []), ['#1a237e']);
+        misarDrawGmChart('gmUsersTypeChart', 'doughnut', misarCountBy(users || [], 'account_type', 'client'), ['#42a5f5', '#ffca28', '#26a69a', '#ab47bc', '#ef5350']);
+        misarDrawGmChart('gmProductsCategoryChart', 'bar', misarCountBy(products || [], 'category', 'بدون تصنيف'), ['#5c6bc0', '#ffa726', '#66bb6a', '#ec407a', '#26c6da']);
+    } catch (e) { console.warn('تعذر رسم الإحصائيات:', e); }
+
+    // ملخص سريع
+    const summary = document.getElementById('gmReportsSummary');
+    if (summary) {
+        const rate = stats.totalOrders ? Math.round((stats.completedOrders / stats.totalOrders) * 100) : 0;
+        summary.innerHTML = `
+            <p><i class="fas fa-info-circle"></i> من إجمالي <b>${stats.totalOrders || 0}</b> طلب، تم تسليم <b>${stats.completedOrders || 0}</b> بمعدل إنجاز <b>${rate}%</b>، وعدد الطلبات الجديدة في انتظار المعالجة <b>${stats.newOrders || 0}</b>.</p>
+            <p><i class="fas fa-users"></i> المنصة فيها <b>${stats.totalUsers || 0}</b> مستخدم منهم <b>${stats.sellers || 0}</b> بائع و<b>${stats.deliveries || 0}</b> مندوب، ويوجد <b>${stats.pendingDeliveries || 0}</b> مندوب بانتظار الموافقة.</p>
+            <p><i class="fas fa-boxes"></i> المحتوى المعروض: <b>${stats.totalProducts || 0}</b> منتج و<b>${stats.totalProperties || 0}</b> عقار و<b>${stats.totalServices || 0}</b> خدمة.</p>`;
+    }
+}
+
+function misarCountBy(rows, key, fallback) {
+    const map = {};
+    (rows || []).forEach(r => {
+        const k = (r[key] === undefined || r[key] === null || r[key] === '') ? fallback : r[key];
+        map[k] = (map[k] || 0) + 1;
+    });
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return { labels: entries.map(e => String(e[0])), values: entries.map(e => e[1]) };
+}
+
+function misarLast7Days(orders) {
+    const labels = [], values = [];
+    const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+        const next = new Date(d); next.setDate(d.getDate() + 1);
+        const count = (orders || []).filter(o => { const t = new Date(o.created_at); return t >= d && t < next; }).length;
+        labels.push(days[d.getDay()]);
+        values.push(count);
+    }
+    return { labels, values };
+}
+
+function misarDrawGmChart(canvasId, type, data, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (__gmCharts[canvasId]) { __gmCharts[canvasId].destroy(); delete __gmCharts[canvasId]; }
+    __gmCharts[canvasId] = new Chart(canvas, {
+        type,
+        data: {
+            labels: data.labels.length ? data.labels : ['لا توجد بيانات'],
+            datasets: [{
+                label: 'العدد', data: data.values.length ? data.values : [0],
+                backgroundColor: type === 'line' ? 'rgba(26,35,126,0.12)' : colors,
+                borderColor: type === 'line' ? colors[0] : undefined,
+                borderWidth: type === 'line' ? 3 : 1,
+                fill: type === 'line', tension: 0.35,
+                borderRadius: type === 'bar' ? 8 : 0
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: type === 'doughnut', position: 'bottom' } },
+            scales: (type === 'doughnut') ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
     });
 }
 
