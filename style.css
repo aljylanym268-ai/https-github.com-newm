@@ -6004,3 +6004,70 @@ button.pending-badge:hover {
     .fcc-items { grid-template-columns: 1fr; }
     .fcc-status-grid { grid-template-columns: 1fr; }
 }
+
+/* ========== نموذج إضافة منتج بخطوات (Product Form Wizard) ========== */
+.product-form-modal { max-width: 480px; max-height: 92vh; overflow-y: auto; position: relative; }
+.pform-steps { display: flex; gap: 6px; margin-bottom: 16px; }
+.pform-step { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 800; color: #999; padding: 8px 6px; border-radius: 12px; background: #f4f2ee; cursor: pointer; transition: all .2s; text-align: center; justify-content: center; }
+.pform-step span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #ddd; font-size: 0.7rem; flex-shrink: 0; }
+.pform-step.active { background: var(--blue-royal, #1a237e); color: #fff; }
+.pform-step.active span { background: rgba(255,255,255,.25); }
+.pform-step.done { color: #1f7a3d; background: #e8f5e9; }
+.pform-step.done span { background: #4caf50; color: #fff; }
+.pform-pane { display: none; }
+.pform-pane.active { display: block; animation: pformFade .25s ease; }
+@keyframes pformFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pform-close { position: absolute; top: 12px; left: 12px; width: 34px; height: 34px; border-radius: 50%; border: none; background: #f0ede8; color: #555; font-size: 1rem; cursor: pointer; }
+.pform-close:hover { background: #e0dcd4; }
+/* أدوات الصورة */
+.image-preview-item { position: relative; }
+.image-preview-item .cover-badge { position: absolute; top: 4px; right: 4px; background: var(--gold, #d4af37); color: #1a237e; font-size: 0.62rem; font-weight: 800; padding: 2px 7px; border-radius: 8px; }
+.image-preview-item .img-tools { position: absolute; bottom: 4px; right: 4px; display: flex; gap: 4px; }
+.img-tool { width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.img-tool:disabled { opacity: .35; cursor: default; }
+/* معاينة مدمجة */
+.pform-preview { margin: 10px 0; }
+.pp-card { display: flex; gap: 12px; background: #faf8f4; border: 1px solid #eee6d8; border-radius: 14px; padding: 10px; align-items: center; }
+.pp-card img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
+.pp-noimg { width: 72px; height: 72px; display: flex; align-items: center; justify-content: center; font-size: 2rem; background: #eee; border-radius: 10px; }
+.pp-name { font-weight: 800; color: #1a237e; }
+.pp-price { color: #1f7a3d; font-weight: 800; margin-top: 3px; }
+/* زر المسودة + مؤشر الحفظ */
+.draft-save-btn { width: 100%; margin-top: 10px; padding: 11px; border: 2px dashed #bbb; background: transparent; border-radius: 14px; color: #666; font-family: inherit; font-weight: 800; font-size: 0.9rem; cursor: pointer; }
+.draft-save-btn:hover { border-color: var(--blue-royal, #1a237e); color: var(--blue-royal, #1a237e); }
+.pform-draft-status { text-align: center; color: #1f7a3d; font-size: 0.78rem; font-weight: 800; height: 18px; opacity: 0; transition: opacity .3s; margin-top: 6px; }
+.pform-draft-status.show { opacity: 1; }
+/* شارة مسودة في قائمة البائع */
+.draft-badge { position: absolute; top: 6px; right: 6px; background: #ff9800; color: #fff; font-size: 0.62rem; font-weight: 800; padding: 3px 8px; border-radius: 8px; z-index: 2; }
+.product-item-image { position: relative; }
+.product-action-btn.publish { background: #e8f5e9; color: #1f7a3d; }
+/* الموبايل */
+@media (max-width: 480px) {
+    .product-form-modal { width: 96vw; max-height: 90vh; border-radius: 18px; }
+    .pform-step { font-size: 0.6rem; padding: 7px 3px; flex-direction: column; gap: 3px; }
+    .pform-steps { gap: 4px; }
+}
+
+/* ========== تسمية وتمييز أزرار نموذج المنتج ========== */
+/* زر رفع الصور — مميز بأيقونة سحابة ولون مختلف */
+.add-product-photo-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 13px;
+    background: #e8f0fe; color: #1a56b0;
+    border: 2px dashed #7ba7e0; border-radius: 14px;
+    font-weight: 800; font-size: 0.95rem; cursor: pointer;
+    transition: all .2s;
+}
+.add-product-photo-btn:hover { background: #dbe7fd; border-color: #1a56b0; }
+.add-product-photo-btn i { font-size: 1.15rem; }
+/* زر المعاينة — رمادي مزرق بأيقونة عين */
+.preview-btn i { color: #1a56b0; }
+.preview-btn { border: 1.5px solid #cfd8e6; }
+.preview-btn:hover { border-color: #1a56b0; }
+/* زر النشر — أخضر واضح أنه الإجراء النهائي */
+.publish-btn { background: #2e7d32 !important; }
+.publish-btn:hover { background: #1f5c23 !important; }
+/* تلميحات الأزرار على الموبايل تعتمد على النص الواضح داخل الزر نفسه */
+@media (max-width: 480px) {
+    .add-product-photo-btn { font-size: 0.88rem; padding: 12px; }
+}

@@ -1318,6 +1318,8 @@ async function loadUserData() {
             await initFounderSettings();
             await loadFounderStats();
             await loadPendingDeliveries();
+            // تحميل ملاحظات المؤسس مبكراً عند فتح التطبيق حتى تظهر فوراً عند فتح التبويب
+            if (typeof initFounderNotesSilent === 'function') initFounderNotesSilent();
         }
 
         // ===== نظام المدير العام =====
