@@ -3192,3 +3192,154 @@ window.getNotificationSettings = getNotificationSettings;
 window.saveNotificationSettings = saveNotificationSettings;
 window.getFounderNotificationLog = getFounderNotificationLog;
 window.testFounderNotificationLink = testFounderNotificationLink;
+// ============================================================
+// استعادة كلمة المرور عبر البريد الإلكتروني
+// ============================================================
+// المسار: نسيت كلمة المرور؟ ← إدخال البريد ← Supabase يرسل رابط استعادة
+// ← المستخدم يفتح الرابط ← نعرض شاشة تعيين كلمة مرور جديدة ← updateUser.
+// الرابط يعود إلى https://www.misarsystems.cloud/ مع hash إشارة استعادة،
+// ومكتبة supabase-js (مع detectSessionInUrl=true) تتعامل معه تلقائياً.
+// ============================================================
+
+const MISAR_PASSWORD_RESET_REDIRECT = 'https://www.misarsystems.cloud/';
+
+function misarOtpShowStep(step) {
+    const s1 = document.getElementById('fpStep1');
+    const s2 = document.getElementById('fpStep2');
+    const s3 = document.getElementById('fpStep3');
+    const s4 = document.getElementById('fpStep4');
+    if (s1) s1.style.display = step === 1 ? 'block' : 'none';
+    if (s2) s2.style.display = step === 2 ? 'block' : 'none';
+    if (s3) s3.style.display = step === 3 ? 'block' : 'none';
+    if (s4) s4.style.display = step === 4 ? 'block' : 'none';
+}
+
+function misarOtpReset() {
+    const emailInput = document.getElementById('fpEmail');
+    const np = document.getElementById('fpNewPassword');
+    const cp = document.getElementById('fpConfirmPassword');
+    if (emailInput) emailInput.value = '';
+    if (np) np.value = '';
+    if (cp) cp.value = '';
+    misarOtpShowStep(1);
+}
+
+async function misarOtpSend() {
+    const emailInput = document.getElementById('fpEmail');
+    const btn = document.getElementById('fpSendBtn');
+    if (!emailInput || !btn) return;
+    const email = emailInput.value.trim().toLowerCase();
+    if (!email) { showToast('يرجى إدخال البريد الإلكتروني', 'warning'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('البريد الإلكتروني غير صحيح', 'error'); return; }
+    showLoading(true);
+    btn.disabled = true;
+    try {
+        const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: MISAR_PASSWORD_RESET_REDIRECT,
+        });
+        if (error) throw error;
+        misarOtpShowStep(2);
+        showToast('تم إرسال رابط الاستعادة إلى بريدك.', 'success');
+    } catch (err) {
+        console.error('resetPasswordForEmail error:', err);
+        showToast(err.message || 'تعذّر إرسال رابط الاستعادة. حاول لاحقاً.', 'error');
+    } finally {
+        showLoading(false);
+        btn.disabled = false;
+    }
+}
+
+async function misarOtpResend() {
+    const btn = document.getElementById('fpResendBtn');
+    if (!btn) return;
+    const emailInput = document.getElementById('fpEmail');
+    if (!emailInput || !emailInput.value.trim()) { misarOtpShowStep(1); return; }
+    showLoading(true);
+    btn.disabled = true;
+    try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(emailInput.value.trim().toLowerCase(), {
+            redirectTo: MISAR_PASSWORD_RESET_REDIRECT,
+        });
+        if (error) throw error;
+        showToast('تم إرسال رابط جديد إلى بريدك.', 'success');
+    } catch (err) {
+        console.error('resend error:', err);
+        showToast(err.message || 'تعذّر إرسال الرابط. حاول لاحقاً.', 'error');
+    } finally {
+        showLoading(false);
+        btn.disabled = false;
+    }
+}
+
+async function misarOtpResetPassword() {
+    const np = document.getElementById('fpNewPassword');
+    const cp = document.getElementById('fpConfirmPassword');
+    const btn = document.getElementById('fpResetBtn');
+    if (!np || !cp || !btn) return;
+    const newPassword = np.value;
+    const confirm = cp.value;
+    if (!newPassword || !confirm) { showToast('يرجى إدخال كلمة المرور وتأكيدها', 'warning'); return; }
+    if (newPassword.length < 6) { showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning'); return; }
+    if (newPassword !== confirm) { showToast('كلمة المرور غير متطابقة', 'error'); return; }
+    showLoading(true);
+    btn.disabled = true;
+    try {
+        const { data, error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        misarOtpShowStep(4);
+        showToast('تم تغيير كلمة المرور بنجاح. سجّل الدخول الآن.', 'success');
+    } catch (err) {
+        console.error('updateUser password error:', err);
+        const msg = err?.message || '';
+        if (/session/i.test(msg)) {
+            showToast('انتهت صلاحية رابط الاستعادة. اطلب رابطاً جديداً.', 'error');
+            misarOtpShowStep(1);
+        } else if (/same/i.test(msg)) {
+            showToast('كلمة المرور الجديدة مطابقة للقديمة. اختر كلمة مختلفة.', 'error');
+        } else {
+            showToast(msg || 'تعذّر تغيير كلمة المرور. حاول مجدداً.', 'error');
+        }
+    } finally {
+        showLoading(false);
+        btn.disabled = false;
+    }
+}
+
+// عند فتح رابط الاستعادة الذي ورد في البريد:
+// مكتبة supabase-js تلتقط hash الإشارة (#access_token=...&type=recovery...)
+// تلقائياً (لدينا detectSessionInUrl=true) وتؤسس جلسة مؤقتة.
+// هذه الدالة تكتشف الحالة وتعرض شاشة تعيين كلمة المرور الجديدة.
+(function misarDetectRecoveryLink() {
+    function check() {
+        try {
+            const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+            const type = h.get('type');
+            const hasToken = h.has('access_token');
+            const isRecovery = type === 'recovery' || (hasToken && type === null);
+            if (isRecovery && hasToken) {
+                console.log('🔗 تم فتح رابط استعادة كلمة المرور');
+                // ننتظر قليلاً حتى تنتهي مكتبة supabase من تبادل الجلسة
+                setTimeout(() => {
+                    misarOtpShowStep(3);
+                    if (typeof showScreen === 'function') showScreen('forgotPasswordScreen');
+                    else {
+                        // احتياط: أظهر الشاشة مباشرة لو showScreen مش جاهزة
+                        const s = document.getElementById('forgotPasswordScreen');
+                        if (s) { s.classList.remove('hidden'); s.classList.add('active'); }
+                    }
+                }, 800);
+            }
+        } catch (e) { /* تجاهل */ }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', check);
+    } else {
+        check();
+    }
+})();
+
+// تصدير الدوال للاستخدام في الواجهة
+window.misarOtpSend = misarOtpSend;
+window.misarOtpResetPassword = misarOtpResetPassword;
+window.misarOtpResend = misarOtpResend;
+window.misarOtpReset = misarOtpReset;

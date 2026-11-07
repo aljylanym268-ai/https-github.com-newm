@@ -94,7 +94,58 @@
                 <button class="login-btn" id="loginBtn"><i class="fas fa-sign-in-alt"></i> تسجيل الدخول</button>
                 <div class="skip-login"><button onclick="skipLogin()">تخطي التسجيل ومتابعة التصفح</button></div>
                 <div class="login-footer">
+                    <a href="#" id="forgotPasswordLink" class="register-now-btn" style="margin-bottom:8px;"><i class="fas fa-key"></i> نسيت كلمة المرور؟</a>
                     <a href="#" id="showRegisterLink" class="register-now-btn"><i class="fas fa-user-plus"></i> ليس لديك حساب؟ سجل الآن</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== شاشة استعادة كلمة المرور ========== -->
+    <div class="screen hidden" id="forgotPasswordScreen">
+        <div class="login-screen">
+            <img src="https://i.ibb.co/XktM4crn/1767120438295.png" alt="Misar Systems" class="login-logo" loading="lazy">
+            <div class="login-card">
+                <!-- الخطوة 1: إدخال البريد -->
+                <div id="fpStep1">
+                    <h1 class="login-title">استعادة كلمة المرور</h1>
+                    <p class="register-subtitle">أدخل بريدك الإلكتروني وسنرسل رمز تحقق إلى رقم هاتفك المسجل.</p>
+                    <div class="input-group">
+                        <label class="input-label">البريد الإلكتروني</label>
+                        <input type="email" class="input-field" id="fpEmail" placeholder="example@email.com" autocomplete="email">
+                    </div>
+                    <button class="login-btn" id="fpSendBtn"><i class="fas fa-paper-plane"></i> إرسال رابط الاستعادة</button>
+                </div>
+                <!-- الخطوة 2: بعد إرسال الرابط -->
+                <div id="fpStep2" style="display:none;">
+                    <h1 class="login-title">تم الإرسال ✅</h1>
+                    <p class="register-subtitle">أرسلنا رابط استعادة كلمة المرور إلى بريدك الإلكتروني.<br>افتح البريد واضغط على الرابط لتعيين كلمة مرور جديدة.</p>
+                    <button class="login-btn" id="fpResendBtn" style="background:#e8eaf6; color:#1a237e; margin-top:8px;"><i class="fas fa-rotate-right"></i> إعادة إرسال الرابط</button>
+                </div>
+                <!-- الخطوة 3: تعيين كلمة المرور الجديدة (تظهر عند فتح الرابط) -->
+                <div id="fpStep3" style="display:none;">
+                    <h1 class="login-title">كلمة المرور الجديدة</h1>
+                    <p class="register-subtitle">اختر كلمة مرور جديدة (6 أحرف على الأقل).</p>
+                    <div class="input-group password-wrapper">
+                        <label class="input-label">كلمة المرور الجديدة</label>
+                        <input type="password" class="input-field" id="fpNewPassword" placeholder="أدخل كلمة المرور الجديدة">
+                        <span class="toggle-password" onclick="togglePasswordVisibility('fpNewPassword', this)"><i class="fas fa-eye"></i></span>
+                    </div>
+                    <div class="input-group password-wrapper">
+                        <label class="input-label">تأكيد كلمة المرور</label>
+                        <input type="password" class="input-field" id="fpConfirmPassword" placeholder="أعد إدخال كلمة المرور">
+                        <span class="toggle-password" onclick="togglePasswordVisibility('fpConfirmPassword', this)"><i class="fas fa-eye"></i></span>
+                    </div>
+                    <button class="login-btn" id="fpResetBtn"><i class="fas fa-save"></i> حفظ كلمة المرور الجديدة</button>
+                </div>
+                <!-- الخطوة 4: تم النجاح -->
+                <div id="fpStep4" style="display:none;">
+                    <h1 class="login-title">تم تغيير كلمة المرور ✅</h1>
+                    <p class="register-subtitle">يمكنك الآن تسجيل الدخول بالإيميل وكلمة المرور الجديدة.</p>
+                    <button class="login-btn" onclick="showScreen('loginScreen')"><i class="fas fa-sign-in-alt"></i> العودة لتسجيل الدخول</button>
+                </div>
+                <div class="login-footer">
+                    <a href="#" id="fpBackToLogin" class="register-now-btn"><i class="fas fa-arrow-right"></i> العودة لتسجيل الدخول</a>
                 </div>
             </div>
         </div>
@@ -2269,6 +2320,40 @@ if (session) {
         document.getElementById('showLoginLink')?.addEventListener('click', function(e) {
             e.preventDefault();
             showScreen('loginScreen');
+        });
+
+        // روابط استعادة كلمة المرور (OTP)
+        document.getElementById('forgotPasswordLink')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof misarOtpReset === 'function') misarOtpReset();
+            showScreen('forgotPasswordScreen');
+        });
+        document.getElementById('fpBackToLogin')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            showScreen('loginScreen');
+        });
+        document.getElementById('fpSendBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof misarOtpSend === 'function') misarOtpSend();
+        });
+        document.getElementById('fpVerifyBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof misarOtpSend === 'function') misarOtpSend();
+        });
+        document.getElementById('fpResendBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof misarOtpResend === 'function') misarOtpResend();
+        });
+        document.getElementById('fpResetBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof misarOtpResetPassword === 'function') misarOtpResetPassword();
+        });
+        // Enter داخل حقول الاستعادة
+        document.getElementById('fpEmail')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); if (typeof misarOtpSend === 'function') misarOtpSend(); }
+        });
+        document.getElementById('fpConfirmPassword')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); if (typeof misarOtpResetPassword === 'function') misarOtpResetPassword(); }
         });
 
         // حفظ الموقع

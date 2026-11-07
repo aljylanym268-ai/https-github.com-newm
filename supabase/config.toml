@@ -1,5 +1,27 @@
 project_id = "wwojtkxwmgkrudtevbcb"
 
+[auth]
+# الموقع الأساسي للموقع (حيث يعود المستخدم بعد فتح رابط الاستعادة)
+site_url = "https://www.misarsystems.cloud"
+
+# الروابط المسموح لها بالعودة بعد عمليات Auth
+additional_redirect_urls = [
+  "https://www.misarsystems.cloud/**",
+  "https://misarsystems.cloud/**",
+  "http://localhost:**",
+  "http://127.0.0.1:**"
+]
+
+# إعدادات بريد الاستعادة
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+# قالب رسالة استعادة كلمة المرور — MISAR SYSTEMS
+[auth.email.template.recovery]
+subject = "إعادة تعيين كلمة المرور | MISAR SYSTEMS"
+content_path = "./supabase/templates/reset_password.html"
+
 [functions.misar-whatsapp]
 # Meta لا ترسل Authorization header عند التحقق من الـ Webhook (GET)
 # ولا عند إرسال إشعارات الرسائل (POST) => يجب تعطيل تحقق JWT على البوابة.
