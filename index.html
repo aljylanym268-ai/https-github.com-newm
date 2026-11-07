@@ -2203,6 +2203,31 @@ if (session) {
         // أثناء نشر تحديث جديد) كخروج فعلي، ويحاول استعادة الجلسة بدلاً من ذلك.
         window.misarManualSignOut = false;
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            // ⚠️ الحماية من الخروج التلقائي عند نشر تحديث جديد:
+            // سبب الخروج الجماعي عند كل تحديث هو أن مكتبة supabase-js تمسح الجلسة
+            // من التخزين وتطلق SIGNED_OUT عند فشل تجديد refresh_token لسبب مؤقت
+            // (شبكة/نشر/رمز مستخدم مسبقاً refresh_token_already_used بسبب تكرار التجديد
+            // من نسخة قديمة من الصفحة ونسخة جديدة في نفس الوقت بعد نشر التحديث).
+            // نتجاهل SIGNED_OUT تلقائياً ناتجاً من فشل تجديد مؤقت ما لم تُثبت
+            // الخادم (getUser) أن الجلسة منتهية فعلاً. الخروج اليدوي (زر الخروج)
+            // يبقى كما هو تماماً — لا يتأثر بهذا الإصلاح.
+            if (event === 'SIGNED_OUT' && !window.misarManualSignOut) {
+                console.warn('ℹ️ SIGNED_OUT تلقائي — سيُعالج أدناه بمحاولة استعادة الجلسة.');
+            }
+            // 💾 نسخة احتياطية من الجلسة (خارج مفتاح المكتبة):
+            // المكتبة تمسح الجلسة من التخزين فوراً عند فشل تجديد التوكن (_removeSession)
+            // قبل أن نتمكن من استعادتها. نحفظ آخر جلسة صالحة في مفتاح منفصل
+            // حتى نتمكن من استعادتها عبر setSession بعد أي خروج تلقائي.
+            // لا تؤثر على الخروج اليدوي إطلاقاً (logout() يمسح النسخة الاحتياطية).
+            if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
+                try {
+                    localStorage.setItem('misarSessionBackup', JSON.stringify({
+                        access_token: session.access_token,
+                        refresh_token: session.refresh_token,
+                        saved_at: Date.now()
+                    }));
+                } catch (e) { /* تجاهل */ }
+            }
             if (event === 'SIGNED_IN' && session) {
                 // تسجيل الدخول ناجح
                 appState.user = {
@@ -2260,6 +2285,7 @@ if (session) {
                     await updateCartBadgeFromDB();
                     showScreen('homeScreen');
                     showToast('تم تسجيل الخروج', 'info');
+                    try { localStorage.removeItem('misarSessionBackup'); } catch (e) { /* تجاهل */ }
                     return;
                 }
                 // خروج تلقائي (ليس بطلب المستخدم) ⇒ غالبًا فشل مؤقت في تجديد
@@ -2286,6 +2312,39 @@ if (session) {
                     console.log('✅ تم استعادة الجلسة بعد خروج تلقائي — المستخدم يبقى مسجلاً.');
                     return;
                 }
+                // 🛡️ المحاولة الأخيرة: استعادة من النسخة الاحتياطية (misarSessionBackup)
+                // لأن المكتبة تمسح الجلسة من التخزين (_removeSession) فور فشل التجديد،
+                // فتصبح getSession() فارغة دائماً وتفشل المحاولات أعلاه.
+                try {
+                    const raw = localStorage.getItem('misarSessionBackup');
+                    if (raw) {
+                        const backup = JSON.parse(raw);
+                        if (backup?.access_token && backup?.refresh_token) {
+                            const { data: restored, error: restoreErr } = await supabaseClient.auth.setSession({
+                                access_token: backup.access_token,
+                                refresh_token: backup.refresh_token
+                            });
+                            if (!restoreErr && restored?.session?.user) {
+                                // نتحقق من الخادم أن الجلسة صحيحة فعلاً (ليست ملغاة)
+                                const { data: gd } = await supabaseClient.auth.getUser();
+                                if (gd?.user) {
+                                    appState.user = { id: gd.user.id, email: gd.user.email, user_metadata: gd.user.user_metadata };
+                                    if (!appState.userData?.account_type) await loadUserData();
+                                    toggleLoginMenu(true);
+                                    const at2 = appState.userData?.account_type || 'client';
+                                    toggleSellerMenuItem(at2 === 'seller' && (appState.userData?.status === 'approved' || !appState.userData?.status));
+                                    toggleDeliveryMenuItem(at2 === 'delivery' && (appState.userData?.status === 'approved' || !appState.userData?.status));
+                                    toggleFounderMenuItem(at2 === 'founder');
+                                    console.log('✅ تم استعادة الجلسة من النسخة الاحتياطية بعد خروج تلقائي.');
+                                    showToast('تم استعادة جلستك تلقائياً', 'success');
+                                    return;
+                                }
+                            }
+                        }
+                        // فشلت الاستعادة (جلسة ملغاة فعلاً من الخادم) ⇒ نمسح النسخة الاحتياطية
+                        localStorage.removeItem('misarSessionBackup');
+                    }
+                } catch (e) { console.warn('فشل استرجاع النسخة الاحتياطية للجلسة:', e); }
                 appState.user = null;
                 appState.userData = {};
                 toggleLoginMenu(false);

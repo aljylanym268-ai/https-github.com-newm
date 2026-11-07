@@ -4,7 +4,7 @@
 // - يخزن الملفات الأساسية مؤقتاً ليعمل التطبيق بدون إنترنت جزئياً
 // ============================================================
 
-const CACHE_NAME = 'misar-cache-v8';
+const CACHE_NAME = 'misar-cache-v9';
 const APP_SHELL = [
   './',
   './index.html',
