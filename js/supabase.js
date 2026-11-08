@@ -3193,15 +3193,12 @@ window.saveNotificationSettings = saveNotificationSettings;
 window.getFounderNotificationLog = getFounderNotificationLog;
 window.testFounderNotificationLink = testFounderNotificationLink;
 // ============================================================
-// استعادة كلمة المرور عبر البريد الإلكتروني
+// استعادة كلمة المرور عبر رمز تحقق يصل بالبريد (OTP)
 // ============================================================
-// المسار: نسيت كلمة المرور؟ ← إدخال البريد ← Supabase يرسل رابط استعادة
-// ← المستخدم يفتح الرابط ← نعرض شاشة تعيين كلمة مرور جديدة ← updateUser.
-// الرابط يعود إلى https://www.misarsystems.cloud/ مع hash إشارة استعادة،
-// ومكتبة supabase-js (مع detectSessionInUrl=true) تتعامل معه تلقائياً.
+// المسار: نسيت كلمة المرور؟ ← إدخال البريد ← رمز 6 أرقام يصل بالبريد
+// (بدون أي رابط — مناسب للجوال) ← التحقق ← كلمة مرور جديدة ← نجاح.
+// الدوال الرسمية: resetPasswordForEmail + verifyOtp + updateUser.
 // ============================================================
-
-const MISAR_PASSWORD_RESET_REDIRECT = 'https://www.misarsystems.cloud/';
 
 function misarOtpShowStep(step) {
     const s1 = document.getElementById('fpStep1');
@@ -3234,15 +3231,16 @@ async function misarOtpSend() {
     showLoading(true);
     btn.disabled = true;
     try {
-        const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-            redirectTo: MISAR_PASSWORD_RESET_REDIRECT,
-        });
+        // بدون redirectTo ⇒ يُرسل رمز OTP فقط (بدون أي رابط) — مناسب للجوال
+        const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email);
         if (error) throw error;
         misarOtpShowStep(2);
-        showToast('تم إرسال رابط الاستعادة إلى بريدك.', 'success');
+        const codeInput = document.getElementById('fpCode');
+        if (codeInput) codeInput.value = '';
+        showToast('تم إرسال رمز التحقق إلى بريدك.', 'success');
     } catch (err) {
         console.error('resetPasswordForEmail error:', err);
-        showToast(err.message || 'تعذّر إرسال رابط الاستعادة. حاول لاحقاً.', 'error');
+        showToast(err.message || 'تعذّر إرسال الرمز. حاول لاحقاً.', 'error');
     } finally {
         showLoading(false);
         btn.disabled = false;
@@ -3257,14 +3255,53 @@ async function misarOtpResend() {
     showLoading(true);
     btn.disabled = true;
     try {
-        const { error } = await supabaseClient.auth.resetPasswordForEmail(emailInput.value.trim().toLowerCase(), {
-            redirectTo: MISAR_PASSWORD_RESET_REDIRECT,
-        });
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(emailInput.value.trim().toLowerCase());
         if (error) throw error;
-        showToast('تم إرسال رابط جديد إلى بريدك.', 'success');
+        const codeInput = document.getElementById('fpCode');
+        if (codeInput) codeInput.value = '';
+        showToast('تم إرسال رمز جديد إلى بريدك.', 'success');
     } catch (err) {
         console.error('resend error:', err);
-        showToast(err.message || 'تعذّر إرسال الرابط. حاول لاحقاً.', 'error');
+        showToast(err.message || 'تعذّر إرسال الرمز. حاول لاحقاً.', 'error');
+    } finally {
+        showLoading(false);
+        btn.disabled = false;
+    }
+}
+
+async function misarOtpVerify() {
+    const codeInput = document.getElementById('fpCode');
+    const btn = document.getElementById('fpVerifyBtn');
+    if (!codeInput || !btn) return;
+    // الرمز 6 أرقام (افتراضي Supabase) — نقبل 4 أو أكثر احتياطاً لو اتغير الإعداد
+    const code = codeInput.value.trim();
+    const emailInput = document.getElementById('fpEmail');
+    const email = (emailInput?.value || '').trim().toLowerCase();
+    if (!email) { showToast('أدخل بريدك أولاً', 'warning'); misarOtpShowStep(1); return; }
+    if (!/^\d{4,6}$/.test(code)) { showToast('أدخل رمز التحقق كاملاً', 'warning'); return; }
+    showLoading(true);
+    btn.disabled = true;
+    try {
+        // تحويل الرمز إلى جلسة مؤقتة تسمح بتغيير كلمة المرور
+        const { data, error } = await supabaseClient.auth.verifyOtp({
+            email: email,
+            token: code,
+            type: 'recovery',
+        });
+        if (error) throw error;
+        misarOtpShowStep(3);
+        showToast('تم التحقق بنجاح. اختر كلمة مرور جديدة.', 'success');
+    } catch (err) {
+        console.error('verifyOtp error:', err);
+        const msg = err?.message || '';
+        if (/expired/i.test(msg)) {
+            showToast('انتهت صلاحية الرمز. اطلب رمزاً جديداً.', 'error');
+            misarOtpShowStep(1);
+        } else if (/invalid/i.test(msg)) {
+            showToast('الرمز غير صحيح. تأكد من الرمز وحاول مجدداً.', 'error');
+        } else {
+            showToast(msg || 'فشل التحقق. حاول مجدداً.', 'error');
+        }
     } finally {
         showLoading(false);
         btn.disabled = false;
@@ -3286,16 +3323,16 @@ async function misarOtpResetPassword() {
     try {
         const { data, error } = await supabaseClient.auth.updateUser({ password: newPassword });
         if (error) throw error;
+        // نجاح — ننهي الجلسة المؤقتة ونرد المستخدم لتسجيل الدخول
+        try { await supabaseClient.auth.signOut(); } catch (e) { /* تجاهل */ }
         misarOtpShowStep(4);
         showToast('تم تغيير كلمة المرور بنجاح. سجّل الدخول الآن.', 'success');
     } catch (err) {
         console.error('updateUser password error:', err);
         const msg = err?.message || '';
         if (/session/i.test(msg)) {
-            showToast('انتهت صلاحية رابط الاستعادة. اطلب رابطاً جديداً.', 'error');
+            showToast('انتهت صلاحية الجلسة. اطلب رمزاً جديداً.', 'error');
             misarOtpShowStep(1);
-        } else if (/same/i.test(msg)) {
-            showToast('كلمة المرور الجديدة مطابقة للقديمة. اختر كلمة مختلفة.', 'error');
         } else {
             showToast(msg || 'تعذّر تغيير كلمة المرور. حاول مجدداً.', 'error');
         }
@@ -3305,41 +3342,11 @@ async function misarOtpResetPassword() {
     }
 }
 
-// عند فتح رابط الاستعادة الذي ورد في البريد:
-// مكتبة supabase-js تلتقط hash الإشارة (#access_token=...&type=recovery...)
-// تلقائياً (لدينا detectSessionInUrl=true) وتؤسس جلسة مؤقتة.
-// هذه الدالة تكتشف الحالة وتعرض شاشة تعيين كلمة المرور الجديدة.
-(function misarDetectRecoveryLink() {
-    function check() {
-        try {
-            const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-            const type = h.get('type');
-            const hasToken = h.has('access_token');
-            const isRecovery = type === 'recovery' || (hasToken && type === null);
-            if (isRecovery && hasToken) {
-                console.log('🔗 تم فتح رابط استعادة كلمة المرور');
-                // ننتظر قليلاً حتى تنتهي مكتبة supabase من تبادل الجلسة
-                setTimeout(() => {
-                    misarOtpShowStep(3);
-                    if (typeof showScreen === 'function') showScreen('forgotPasswordScreen');
-                    else {
-                        // احتياط: أظهر الشاشة مباشرة لو showScreen مش جاهزة
-                        const s = document.getElementById('forgotPasswordScreen');
-                        if (s) { s.classList.remove('hidden'); s.classList.add('active'); }
-                    }
-                }, 800);
-            }
-        } catch (e) { /* تجاهل */ }
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', check);
-    } else {
-        check();
-    }
-})();
+// (لا حاجة لكشف رابط الاستعادة — التدفق كله داخل التطبيق عبر الرمز)
 
 // تصدير الدوال للاستخدام في الواجهة
 window.misarOtpSend = misarOtpSend;
+window.misarOtpVerify = misarOtpVerify;
 window.misarOtpResetPassword = misarOtpResetPassword;
 window.misarOtpResend = misarOtpResend;
 window.misarOtpReset = misarOtpReset;

@@ -17,7 +17,7 @@ additional_redirect_urls = [
 enable_signup = true
 enable_confirmations = true
 
-# قالب رسالة استعادة كلمة المرور — MISAR SYSTEMS
+# قالب استعادة كلمة المرور — يعرض الرمز {{ .Token }} بدون رابط
 [auth.email.template.recovery]
 subject = "إعادة تعيين كلمة المرور | MISAR SYSTEMS"
 content_path = "./supabase/templates/reset_password.html"

@@ -116,11 +116,16 @@
                     </div>
                     <button class="login-btn" id="fpSendBtn"><i class="fas fa-paper-plane"></i> إرسال رابط الاستعادة</button>
                 </div>
-                <!-- الخطوة 2: بعد إرسال الرابط -->
+                <!-- الخطوة 2: الرمز -->
                 <div id="fpStep2" style="display:none;">
-                    <h1 class="login-title">تم الإرسال ✅</h1>
-                    <p class="register-subtitle">أرسلنا رابط استعادة كلمة المرور إلى بريدك الإلكتروني.<br>افتح البريد واضغط على الرابط لتعيين كلمة مرور جديدة.</p>
-                    <button class="login-btn" id="fpResendBtn" style="background:#e8eaf6; color:#1a237e; margin-top:8px;"><i class="fas fa-rotate-right"></i> إعادة إرسال الرابط</button>
+                    <h1 class="login-title">رمز التحقق</h1>
+                    <p class="register-subtitle">أرسلنا رمز التحقق إلى بريدك الإلكتروني.<br>أدخل الرمز لتعيين كلمة مرور جديدة.</p>
+                    <div class="input-group">
+                        <label class="input-label">رمز التحقق</label>
+                        <input type="text" class="input-field" id="fpCode" placeholder="⬤ ⬤ ⬤ ⬤ ⬤ ⬤" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="letter-spacing:10px; text-align:center; font-size:1.5rem; font-weight:700;">
+                    </div>
+                    <button class="login-btn" id="fpVerifyBtn"><i class="fas fa-check-circle"></i> تحقق من الرمز</button>
+                    <button class="login-btn" id="fpResendBtn" style="background:#e8eaf6; color:#1a237e; margin-top:8px;"><i class="fas fa-rotate-right"></i> إعادة إرسال الرمز</button>
                 </div>
                 <!-- الخطوة 3: تعيين كلمة المرور الجديدة (تظهر عند فتح الرابط) -->
                 <div id="fpStep3" style="display:none;">
@@ -2397,7 +2402,7 @@ if (session) {
         });
         document.getElementById('fpVerifyBtn')?.addEventListener('click', function(e) {
             e.preventDefault();
-            if (typeof misarOtpSend === 'function') misarOtpSend();
+            if (typeof misarOtpVerify === 'function') misarOtpVerify();
         });
         document.getElementById('fpResendBtn')?.addEventListener('click', function(e) {
             e.preventDefault();
@@ -2410,6 +2415,12 @@ if (session) {
         // Enter داخل حقول الاستعادة
         document.getElementById('fpEmail')?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); if (typeof misarOtpSend === 'function') misarOtpSend(); }
+        });
+        document.getElementById('fpCode')?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); if (typeof misarOtpVerify === 'function') misarOtpVerify(); }
+        });
+        document.getElementById('fpCode')?.addEventListener('input', function(e) {
+            this.value = this.value.replace(/\D/g, '').slice(0, 6);
         });
         document.getElementById('fpConfirmPassword')?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); if (typeof misarOtpResetPassword === 'function') misarOtpResetPassword(); }
