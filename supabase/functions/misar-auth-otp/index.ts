@@ -15,7 +15,7 @@
 //
 // الأمان:
 //   • الرمز يُخزّن HMAC-SHA256 (وليس نصاً) بسر OTP_SIGNING_SECRET.
-//   • 10 دقائق صلاحية للرمز، و15 دقيقة للـ reset_token.
+//   • 30 دقائق صلاحية للرمز، و30 دقيقة للـ reset_token.
 //   • 3 محاولات كحد أقصى للتحقق، ثم يُلغى الطلب.
 //   • تحديد معدل الإرسال: رمز واحد كل 60 ثانية لكل رقم.
 //   • RLS على جدول password_reset_otps: بلا سياسات — الوصول حصري
@@ -114,7 +114,7 @@ async function sendViaWhatsApp(phoneIntl: string, code: string): Promise<{ ok: b
     return { ok: false, detail: "WHATSAPP_* secrets not set" };
   }
   const text =
-    `🔐 MISAR SYSTEMS\n\nرمز استعادة كلمة المرور: ${code}\n\nصالح لمدة 10 دقائق. لا تشاركه مع أي أحد.`;
+    `🔐 MISAR SYSTEMS\n\nرمز استعادة كلمة المرور: ${code}\n\nصالح لمدة 30 دقيقة. لا تشاركه مع أي أحد.`;
   try {
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`,
@@ -149,7 +149,7 @@ async function sendViaTwilioSMS(phoneIntl: string, code: string): Promise<{ ok: 
   const body = new URLSearchParams({
     To: `+${phoneIntl}`,
     From: from,
-    Body: `MISAR SYSTEMS: رمز استعادة كلمة المرور هو ${code}. صالح 10 دقائق. لا تشاركه.`,
+    Body: `MISAR SYSTEMS: رمز استعادة كلمة المرور هو ${code}. صالح 30 دقيقة. لا تشاركه.`,
   });
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
@@ -280,7 +280,7 @@ serve(async (req) => {
         email: email,
         phone: phoneIntl,
         code_hash: codeHash,
-        expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
       });
       if (insertErr) {
         console.error("insert otp error:", insertErr.message);
@@ -364,7 +364,7 @@ serve(async (req) => {
         .update({
           verified: true,
           token_hash: resetTokenHash,
-          verified_expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+          verified_expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
         })
         .eq("id", otp.id);
       if (updErr) {

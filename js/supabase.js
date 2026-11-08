@@ -11,14 +11,54 @@ if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'functio
 }
 const { createClient } = supabase;
 
+// ======================================================================
+// 🛡️ الإصلاح الجذري لمشكلة "الخروج الجماعي عند كل تحديث":
+// 1) storageKey ثابت ومخصص (sb-wwojtkxwmgkrudtevbcb-auth-token):
+//    اسم مفتاح التخزين الافتراضي في مكتبة supabase-js يتغير بين الإصدارات،
+//    فأي تحديث للمكتبة يجعل الصفحة تبحث عن مفتاح جديد ولا تجد الجلسة القديمة
+//    فيسجّل المستخدم خروجًا. تثبيت المفتاح يمنع ذلك نهائيًا ويحافظ
+//    على جلسات المستخدمين الحالية (بدون أي تغيير في قاعدة البيانات أو RLS).
+// 2) multiTabCoordination عبر BroadcastChannel حتى لا تتنافس نسختان قديمة/جديدة
+//    من الصفحة على تجديد نفس refresh_token (سبب refresh_token_already_used).
+// ======================================================================
+const MISAR_AUTH_STORAGE_KEY = 'sb-wwojtkxwmgkrudtevbcb-auth-token';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        flowType: 'pkce'
+        flowType: 'pkce',
+        storageKey: MISAR_AUTH_STORAGE_KEY,
+        multiTabCoordination: true
     }
 });
+
+// ===== نقل آلي للجلسات القديمة المحفوظة بالمفتاح الافتراضي =====
+// حتى لا يخرج المستخدمون الحاليون عند أول تحميل بعد هذا الإصلاح:
+// ننتقل بالجلسة من أي مفتاح قديم معروف إلى المفتاح الجديد الثابت.
+(function migrateLegacySupabaseSession() {
+    try {
+        if (localStorage.getItem(MISAR_AUTH_STORAGE_KEY)) return; // يوجد بالفعل
+        const legacyKeys = [
+            'supabase.auth.token',
+            'sb-wwojtkxwmgkrudtevbcb-auth-token-v1',
+            'sb-wwojtkxwmgkrudtevbcb-auth-token-legacy'
+        ];
+        for (const k of legacyKeys) {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.access_token && parsed.refresh_token) {
+                        localStorage.setItem(MISAR_AUTH_STORAGE_KEY, raw);
+                        console.log('✅ تم نقل الجلسة القديمة إلى مفتاح التخزين الثابت:', k);
+                    }
+                } catch (e) { /* مفتاح تالف — تجاهل */ }
+                break;
+            }
+        }
+    } catch (e) { /* تجاهل */ }
+})();
 
 // ========== تنظيف رابط العودة بعد تسجيل الدخول عبر Google (OAuth) ==========
 // يزيل كود PKCE / التوكنات / أخطاء OAuth من الرابط حتى لا يتسبب تحديث الصفحة

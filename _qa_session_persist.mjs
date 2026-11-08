@@ -13,7 +13,7 @@ function resolveChromium() {
 }
 
 const chromium = resolveChromium()
-const browser = await chromium.launch({ channel: 'chromium', headless: true })
+const browser = await chromium.launch({ channel: 'msedge', headless: true })
 const ctx = await browser.newContext()
 const p = await ctx.newPage()
 p.on('pageerror', e => console.log('PAGEERROR:', e.message))
