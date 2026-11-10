@@ -542,6 +542,12 @@ async function misarRenderGmAdminPanel() {
     if (!misarIsFounder()) return;
     await misarLoadGmSettings();
     await misarLoadGmList();
+    // مزامنة مفتاح سياسة إظهار كلمات المرور للمدراء (المؤسس فقط)
+    try {
+        const { data } = await supabaseClient.from('app_settings').select('setting_value').eq('setting_key', 'show_passwords_to_managers').maybeSingle();
+        const cb = document.getElementById('policyShowPasswords');
+        if (cb) cb.checked = String(data?.setting_value ?? 'false').includes('true');
+    } catch (e) { /* تجاهل */ }
     // لا نعرض الشبكة العامة إلا إذا كان المؤسس قد اختار مديراً بعينه
     misarRenderGmPermissionsGrid();
     misarRenderGmList();

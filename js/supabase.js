@@ -2626,6 +2626,7 @@ async function getAllProductsAdmin() {
     const { data, error } = await supabaseClient
         .from('products')
         .select('*, user_data(name)')
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];

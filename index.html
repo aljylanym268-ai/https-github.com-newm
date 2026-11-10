@@ -866,7 +866,7 @@
                 <div id="deliveriesTableWrapper">
                     <table class="founder-table" id="deliveriesTable">
                         <thead>
-                            <tr><th>الصورة</th><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>المحافظة</th><th>المركز</th><th>تاريخ التسجيل</th><th>آخر دخول</th><th>الحالة</th><th>الإجراءات</th></tr>
+                            <tr><th>الصورة</th><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>المحافظة</th><th>المركز</th><th>كلمة المرور</th><th>تاريخ التسجيل</th><th>آخر دخول</th><th>الحالة</th><th>الإجراءات</th></tr>
                         </thead>
                         <tbody id="deliveriesTableBody"></tbody>
                     </table>
@@ -882,7 +882,7 @@
                 <div id="customersTableWrapper">
                     <table class="founder-table" id="customersTable">
                         <thead>
-                            <tr><th>الصورة</th><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>عدد الطلبات</th><th>تاريخ التسجيل</th><th>الإجراءات</th></tr>
+                            <tr><th>الصورة</th><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>كلمة المرور</th><th>عدد الطلبات</th><th>تاريخ التسجيل</th><th>الإجراءات</th></tr>
                         </thead>
                         <tbody id="customersTableBody"></tbody>
                     </table>
@@ -901,7 +901,7 @@
                 <div id="sellersTableWrapper">
                     <table class="founder-table" id="sellersTable">
                         <thead>
-                            <tr><th>صورة المتجر</th><th>اسم المتجر</th><th>اسم البائع</th><th>الهاتف</th><th>عدد المنتجات</th><th>عدد الطلبات</th><th>التقييم</th><th>تاريخ التسجيل</th><th>الإجراءات</th></tr>
+                            <tr><th>صورة المتجر</th><th>اسم البائع</th><th>الهاتف</th><th>كلمة المرور</th><th>عدد المنتجات</th><th>عدد الطلبات</th><th>التقييم</th><th>تاريخ التسجيل</th><th>الإجراءات</th></tr>
                         </thead>
                         <tbody id="sellersTableBody"></tbody>
                     </table>
@@ -921,7 +921,7 @@
                 <div id="productsTableWrapper">
                     <table class="founder-table" id="productsTable">
                         <thead>
-                            <tr><th>الصورة</th><th>اسم المنتج</th><th>البائع</th><th>المتجر</th><th>القسم</th><th>السعر</th><th>الحالة</th><th>تاريخ الإضافة</th><th>الإجراءات</th></tr>
+                            <tr><th>الصورة</th><th>اسم المنتج</th><th>البائع</th><th>المتجر</th><th>القسم</th><th>السعر</th><th>الحالة</th><th>التاريخ</th><th>الترتيب</th><th>الإجراءات</th></tr>
                         </thead>
                         <tbody id="productsTableBody"></tbody>
                     </table>
@@ -1177,6 +1177,17 @@
                         <button class="filter-btn" onclick="onGmApplyTemplate('default')"><i class="fas fa-undo"></i> قالب: الافتراضي</button>
                     </div>
                     <div id="gmPermissionsGrid" class="gm-perm-grid"></div>
+
+                    <div class="gm-perm-card" style="margin-top:18px;">
+                        <div class="gm-perm-title"><i class="fas fa-lock"></i> سياسة إظهار كلمات المرور</div>
+                        <div class="gm-perm-actions">
+                            <label class="gm-perm-check">
+                                <input type="checkbox" id="policyShowPasswords" onchange="togglePasswordsToManagers()">
+                                <span>السماح للمدراء برؤية كلمات مرور الحسابات</span>
+                            </label>
+                        </div>
+                        <p style="color:#888; font-size:0.78rem; margin-top:8px;">عند الإيقاف (الافتراضي): المؤسس فقط يرى كلمات المرور. عند التفعيل: المدراء العامون يرايها أيضاً في جداول المستخدمين.</p>
+                    </div>
                 </div>
             </div>
 
@@ -1827,7 +1838,8 @@
             <div class="input-group"><label class="input-label">الهاتف</label><input type="text" id="editUserPhone" class="input-field"></div>
             <div class="input-group"><label class="input-label">المحافظة</label><input type="text" id="editUserGovernorate" class="input-field"></div>
             <div class="input-group"><label class="input-label">المركز</label><input type="text" id="editUserCenter" class="input-field"></div>
-            <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="saveUserEdit()">حفظ</button><button class="google-btn" style="flex:1;" onclick="closeUserEditModal()">إلغاء</button></div>
+            <div class="input-group"><label class="input-label">كلمة المرور</label><input type="text" id="editUserPassword" class="input-field" placeholder="أدخل كلمة المرور الجديدة" style="direction:ltr;"></div>
+            <div style="display:flex; gap:10px; margin-top:20px;"><button class="login-btn" style="flex:1;" onclick="saveUserEdit()">حفظ</button><button class="google-btn" style="flex:1;" onclick="saveUserPassword()"><i class="fas fa-key"></i> حفظ كلمة المرور</button><button class="google-btn" style="flex:1;" onclick="closeUserEditModal()">إلغاء</button></div>
         </div>
     </div>
 

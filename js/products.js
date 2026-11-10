@@ -1,7 +1,23 @@
 // ========= تحميل المنتجات من قاعدة البيانات ==========
 async function loadProductsFromDB() {
-    const { data, error } = await supabaseClient.from('products').select('*').order('created_at', { ascending: false });
-    if (error) { console.error(error); return []; }
+    // الترتيب حسب sort_order (المؤسس يحدده يدوياً) ثم الأحدث كخيار ثاني
+    const { data, error } = await supabaseClient.from('products')
+        .select('*')
+        .neq('status', 'deleted')
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error(error);
+        // fallback: لو sort_order مش موجود في قاعدة البيانات بعد
+        const fb = await supabaseClient.from('products').select('*').neq('status','deleted').order('created_at', { ascending: false });
+        if (fb.error) { console.error(fb.error); return []; }
+        appState.products = fb.data;
+        try {
+            if (typeof loadFeaturedProducts === 'function') loadFeaturedProducts();
+            if (typeof loadMarketProducts === 'function') loadMarketProducts();
+        } catch (e) { console.warn('render products error:', e); }
+        return fb.data;
+    }
     appState.products = data;
     // إعادة عرض المنتجات بعد وصولها من قاعدة البيانات
     // (لأن التحميل بيحصل في الخلفية بعد ظهور الشاشة)
@@ -949,7 +965,7 @@ async function addSellerStoreTools() { const toolsDiv = document.getElementById(
 async function updateStoreTools() { if (!appState.user || appState.userData.account_type !== 'seller') return; const linkDisplay = document.getElementById('storeLinkDisplay'); const qrContainer = document.getElementById('storeQRCode'); if (!linkDisplay || !qrContainer) return; const storeUrl = getStoreUrl(); linkDisplay.textContent = storeUrl; generateStoreQR(storeUrl, 'storeQRCode'); }
 
 // ========== عرض صفحة متجر البائع ==========
-async function showStorePage(identifier) { showLoading(true); let sellerData = null; const isUserId = identifier.startsWith('user_') || (identifier.length > 20 && identifier.includes('-')); let publicError = null; /* تعرض بيانات المتجر العامة عبر RPC محدودة الحقول، دون قراءة user_data مباشرة. */ const rpcName = isUserId ? 'get_public_store' : 'get_public_store_by_username'; const { data: rpcData, error: rpcError } = await supabaseClient.rpc(rpcName, { p_identifier: identifier }); const publicRow = Array.isArray(rpcData) ? rpcData[0] : rpcData; if (!rpcError && publicRow) sellerData = publicRow; else publicError = rpcError; if (!sellerData) { showLoading(false); showToast(publicError ? 'تعذر تحميل بيانات المتجر العامة — تحقق من إعداد get_public_store في Supabase' : 'البائع غير موجود أو اسم المتجر غير صحيح', 'error'); showScreen('homeScreen'); return; } const { data: products } = await supabaseClient.from('products').select('*').eq('user_id', sellerData.id).order('created_at', { ascending: false }); const container = document.getElementById('storeContent'); const avatarUrl = sellerData.image_url || ''; const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" alt="صورة البائع">` : '<i class="fas fa-user" style="font-size:3rem; color:#aaa;"></i>'; const sellerName = sellerData.name || sellerData.email?.split('@')[0] || 'بائع'; const bioHtml = sellerData.bio ? `<div class="store-bio">${escapeHTML(sellerData.bio)}</div>` : ''; let productsHtml = '<div class="products-grid" id="storeProductsGrid">'; if (products && products.length) { products.forEach(p => { const img = p.images && p.images[0] ? p.images[0] : (p.image_url || ''); productsHtml += `<div class="product-card" onclick="openProductDetailFromStore('${p.id}')"><div class="product-image"><img src="${img}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div>📦</div>';"> <div class="product-tag">${p.category || 'عام'}</div></div><div class="product-info"><div class="product-title">${escapeHTML(p.name)}</div><div class="product-price">${p.price} ج.م</div>${getProductRatingHTML(p)}<button class="add-to-cart" onclick="event.stopPropagation(); addToCart('${p.id}')"><i class="fas fa-cart-plus"></i> إضافة للسلة</button></div></div>`; }); } else { productsHtml += '<p style="grid-column:span2; text-align:center; padding:30px;">لا توجد منتجات متاحة حالياً</p>'; } productsHtml += '</div>'; container.innerHTML = `<div class="seller-store-header"><div class="seller-store-avatar">${avatarHtml}</div><div class="seller-store-name">${escapeHTML(sellerName)}</div><div class="seller-store-subtitle"><i class="fas fa-store"></i> متجر مسجل على Misar Systems</div>${bioHtml}</div><div class="store-products"><div class="section-title"><i class="fas fa-box"></i> جميع المنتجات</div>${productsHtml}</div>`; showLoading(false); showScreen('storeScreen'); }
+async function showStorePage(identifier) { showLoading(true); let sellerData = null; const isUserId = identifier.startsWith('user_') || (identifier.length > 20 && identifier.includes('-')); let publicError = null; /* تعرض بيانات المتجر العامة عبر RPC محدودة الحقول، دون قراءة user_data مباشرة. */ const rpcName = isUserId ? 'get_public_store' : 'get_public_store_by_username'; const { data: rpcData, error: rpcError } = await supabaseClient.rpc(rpcName, { p_identifier: identifier }); const publicRow = Array.isArray(rpcData) ? rpcData[0] : rpcData; if (!rpcError && publicRow) sellerData = publicRow; else publicError = rpcError; if (!sellerData) { showLoading(false); showToast(publicError ? 'تعذر تحميل بيانات المتجر العامة — تحقق من إعداد get_public_store في Supabase' : 'البائع غير موجود أو اسم المتجر غير صحيح', 'error'); showScreen('homeScreen'); return; } const { data: products } = await supabaseClient.from('products').select('*').eq('user_id', sellerData.id).order('sort_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }); const container = document.getElementById('storeContent'); const avatarUrl = sellerData.image_url || ''; const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" alt="صورة البائع">` : '<i class="fas fa-user" style="font-size:3rem; color:#aaa;"></i>'; const sellerName = sellerData.name || sellerData.email?.split('@')[0] || 'بائع'; const bioHtml = sellerData.bio ? `<div class="store-bio">${escapeHTML(sellerData.bio)}</div>` : ''; let productsHtml = '<div class="products-grid" id="storeProductsGrid">'; if (products && products.length) { products.forEach(p => { const img = p.images && p.images[0] ? p.images[0] : (p.image_url || ''); productsHtml += `<div class="product-card" onclick="openProductDetailFromStore('${p.id}')"><div class="product-image"><img src="${img}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div>📦</div>';"> <div class="product-tag">${p.category || 'عام'}</div></div><div class="product-info"><div class="product-title">${escapeHTML(p.name)}</div><div class="product-price">${p.price} ج.م</div>${getProductRatingHTML(p)}<button class="add-to-cart" onclick="event.stopPropagation(); addToCart('${p.id}')"><i class="fas fa-cart-plus"></i> إضافة للسلة</button></div></div>`; }); } else { productsHtml += '<p style="grid-column:span2; text-align:center; padding:30px;">لا توجد منتجات متاحة حالياً</p>'; } productsHtml += '</div>'; container.innerHTML = `<div class="seller-store-header"><div class="seller-store-avatar">${avatarHtml}</div><div class="seller-store-name">${escapeHTML(sellerName)}</div><div class="seller-store-subtitle"><i class="fas fa-store"></i> متجر مسجل على Misar Systems</div>${bioHtml}</div><div class="store-products"><div class="section-title"><i class="fas fa-box"></i> جميع المنتجات</div>${productsHtml}</div>`; showLoading(false); showScreen('storeScreen'); }
 function openProductDetailFromStore(productId) { const product = appState.products.find(p => p.id === productId); if (product) openProductDetail(product); else showToast('المنتج غير موجود', 'error'); }
 
 // ===================== إضافة دالة إظهار/إخفاء كلمة المرور =====================
@@ -1004,7 +1020,7 @@ function renderProductsTableAdmin(data, targetEl) {
     const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('productsTableBody') : document.getElementById('productsTableBody'));
     if (!tbody) return;
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">لا توجد منتجات</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">لا توجد منتجات</td></tr>';
         return;
     }
     tbody.innerHTML = data.map(p => {
@@ -1028,8 +1044,11 @@ function renderProductsTableAdmin(data, targetEl) {
             <td>${p.price} ج.م</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>${new Date(p.created_at).toLocaleDateString('ar-EG')}</td>
+            <td class="sort-order-cell">${p.sort_order ?? '-'}</td>
             <td>
                 <div class="action-group">
+                    <button class="btn-sm" title="نقل لأعلى (يظهر قبل)" onclick="moveProductOrder('${p.id}', -1)">▲</button>
+                    <button class="btn-sm" title="نقل لأسفل (يظهر بعد)" onclick="moveProductOrder('${p.id}', 1)">▼</button>
                     <button class="btn-sm view" onclick="viewProductDetails('${p.id}')"><i class="fas fa-eye"></i></button>
                     <button class="btn-sm edit" onclick="editProductAdmin('${p.id}')"><i class="fas fa-edit"></i></button>
                     ${statusClass !== 'hidden' ? `<button class="btn-sm hide" onclick="hideProductAdmin('${p.id}')"><i class="fas fa-eye-slash"></i></button>` :
@@ -1041,6 +1060,44 @@ function renderProductsTableAdmin(data, targetEl) {
         </tr>`;
     }).join('');
 }
+
+// ====== ترتيب المنتجات (المؤسس فقط) ======
+// يقرأ ترتيب كل المنتجات من قاعدة البيانات، ينقل منتج واحد مكان آخر، ويحفظ الترتيب الجديد
+window.moveProductOrder = async function(productId, direction) {
+    showLoading(true);
+    try {
+        const { data: products, error } = await supabaseClient.from('products')
+            .select('id, name, sort_order, created_at')
+            .neq('status', 'deleted')
+            .order('sort_order', { ascending: true, nullsFirst: false })
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        const list = products || [];
+        const idx = list.findIndex(p => p.id === productId);
+        if (idx < 0) { showToast('المنتج غير موجود', 'error'); return; }
+        const targetIdx = idx + direction;
+        if (targetIdx < 0 || targetIdx >= list.length) {
+            showToast(direction < 0 ? 'المنتج في أعلى الترتيب بالفعل' : 'المنتج في آخر الترتيب بالفعل');
+            return;
+        }
+        // تبديل مكان المنتجين في القائمة
+        const tmp = list[idx];
+        list[idx] = list[targetIdx];
+        list[targetIdx] = tmp;
+        // حفظ الترتيب الجديد بالكامل
+        const updates = list.map((p, i) => supabaseClient.from('products').update({ sort_order: i }).eq('id', p.id));
+        const results = await Promise.all(updates);
+        const err = results.find(r => r.error)?.error;
+        if (err) throw err;
+        await logActivity(appState.user.id, 'reorder_product', { product_id: productId, direction });
+        showToast('تم تحديث ترتيب المنتجات', 'success');
+        await loadProductsTableAdmin(1);
+        await loadProductsFromDB();
+    } catch (e) {
+        console.error('moveProductOrder error:', e);
+        showToast('فشل تحديث الترتيب: ' + (e.message || ''), 'error');
+    } finally { showLoading(false); }
+};
 
 // ====== دوال المنتجات (إدارة المؤسس) ======
 
@@ -1926,6 +1983,7 @@ window.saveAllSettings = async function() {
 // ====== دوال المناديب (جدول) ======
 let deliveriesFilter = { query: '', status: 'all' };
 async function loadDeliveriesTable(page = 1, pageSize = 10) {
+    await loadPasswordsForTables();
     const deliveries = await getAllDeliveries();
     const filtered = deliveries.filter(d => {
         const q = deliveriesFilter.query.toLowerCase();
@@ -1949,7 +2007,7 @@ function renderDeliveriesTable(data, targetEl) {
     const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('deliveriesTableBody') : document.getElementById('deliveriesTableBody'));
     if (!tbody) return;
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">لا يوجد مناديب</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:20px;">لا يوجد مناديب</td></tr>';
         return;
     }
     tbody.innerHTML = data.map(d => {
@@ -1969,6 +2027,7 @@ function renderDeliveriesTable(data, targetEl) {
             <td>${escapeHTML(d.email || '')}</td>
             <td>${escapeHTML(d.governorate || '')}</td>
             <td>${escapeHTML(d.center || '')}</td>
+            <td>${passwordCellHtml(d.id)}</td>
             <td>${new Date(d.created_at).toLocaleDateString('ar-EG')}</td>
             <td>${lastLogin}</td>
             <td><span class="status-badge ${d.status}">${statusText}</span></td>
@@ -2010,6 +2069,7 @@ window.filterDeliveriesByStatus = function(status) {
 // ====== دوال العملاء (جدول) ======
 let customersFilter = { query: '' };
 async function loadCustomersTable(page = 1, pageSize = 10) {
+    await loadPasswordsForTables();
     const clients = await getAllClients();
     const filtered = clients.filter(c => {
         const q = customersFilter.query.toLowerCase();
@@ -2029,7 +2089,7 @@ function renderCustomersTable(data, targetEl) {
     const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('customersTableBody') : document.getElementById('customersTableBody'));
     if (!tbody) return;
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">لا يوجد عملاء</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">لا يوجد عملاء</td></tr>';
         return;
     }
     // جلب عدد طلبات كل عميل
@@ -2045,6 +2105,7 @@ function renderCustomersTable(data, targetEl) {
                 <td>${escapeHTML(c.name || 'غير معروف')}</td>
                 <td>${escapeHTML(c.phone || '')}</td>
                 <td>${escapeHTML(c.email || '')}</td>
+                <td>${passwordCellHtml(c.id)}</td>
                 <td>${c.order_count > 0
                     ? `<button class="pending-badge" style="cursor:pointer;border:none;" title="عرض طلبات هذا العميل" onclick="openOrdersForUser('buyer','${c.id}', '${escapeHTML(c.name || '')}')">${c.order_count}</button>`
                     : `<span class="pending-badge">0</span>`}</td>
@@ -2071,6 +2132,7 @@ window.filterCustomers = function() {
 // ====== دوال البائعين (جدول) ======
 let sellersFilter = { query: '', status: 'all' };
 async function loadSellersTable(page = 1, pageSize = 10) {
+    await loadPasswordsForTables();
     const sellers = await getAllSellers();
     const filtered = sellers.filter(s => {
         const q = sellersFilter.query.toLowerCase();
@@ -2092,7 +2154,7 @@ function renderSellersTable(data, targetEl) {
     const tbody = (typeof targetEl !== 'undefined' && targetEl) ? targetEl : (typeof misarGmRenderTarget === 'function' ? misarGmRenderTarget('sellersTableBody') : document.getElementById('sellersTableBody'));
     if (!tbody) return;
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">لا يوجد بائعين</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">لا يوجد بائعين</td></tr>';
         return;
     }
     tbody.innerHTML = data.map(s => {
@@ -2104,6 +2166,7 @@ function renderSellersTable(data, targetEl) {
             <td>${escapeHTML(s.username || s.name || 'غير معروف')}</td>
             <td>${escapeHTML(s.name || 'غير معروف')}</td>
             <td>${escapeHTML(s.phone || '')}</td>
+            <td>${passwordCellHtml(s.id)}</td>
             <td>${s.product_count || 0}</td>
             <td>${(s.order_count || 0) > 0
                     ? `<button class="pending-badge" style="cursor:pointer;border:none;" title="عرض طلبات هذا البائع" onclick="openOrdersForUser('seller','${s.id}', '${escapeHTML(s.name || '')}')">${s.order_count}</button>`
@@ -2301,6 +2364,91 @@ window.deleteSellerConfirm = async function(userId) {
         loadSellersTable();
     } catch (err) { showToast(err.message, 'error'); }
     finally { showLoading(false); }
+};
+
+// ====== كلمات مرور الحسابات (المؤسس يراها دائماً؛ المدراء حسب سياسة المؤسس) ======
+// خريطة كلمات المرور في الذاكرة (تُحمّل مرة عند فتح أي جدول مستخدمين)
+window._passwordsMap = {};
+window._passwordsVisibleToMe = false;
+
+async function loadPasswordsForTables() {
+    try {
+        const { data, error } = await supabaseClient.from('account_credentials').select('user_id, plain_password');
+        if (error) throw error;
+        window._passwordsMap = {};
+        (data || []).forEach(r => { window._passwordsMap[r.user_id] = r.plain_password || ''; });
+        window._passwordsVisibleToMe = true;
+    } catch (e) {
+        console.warn('لا توجد صلاحية لقراءة كلمات المرور (طبيعي لو السياسة مطفية للمدراء):', e.message);
+        window._passwordsVisibleToMe = false;
+    }
+}
+
+// خلية كلمة المرور داخل الجدول (تظهر فقط لمن يملك صلاحية)
+function passwordCellHtml(userId) {
+    if (!window._passwordsVisibleToMe) return '<span style="color:#bbb;">••••</span>';
+    const pwd = window._passwordsMap[userId] || '';
+    if (!pwd) return '<span style="color:#bbb;">غير محددة</span>';
+    return `<span class="pwd-text" data-pwd="${escapeHTML(pwd)}" style="direction:ltr; font-family:monospace;">${escapeHTML(pwd)}</span>`;
+}
+
+// ====== تعديل كلمة مرور حساب (المؤسس فقط) ======
+window.editUserPassword = function(userId, userName) {
+    const modal = document.getElementById('userEditModal');
+    const pwdField = document.getElementById('editUserPassword');
+    if (!modal || !pwdField) return;
+    document.getElementById('editingUserId').value = userId;
+    // نملأ الحقول الأخرى من بيانات المستخدم إن كانت متاحة
+    pwdField.value = window._passwordsMap[userId] || '';
+    const titleEl = document.getElementById('userEditModalTitle');
+    if (titleEl && userName) titleEl.textContent = 'تعديل المستخدم: ' + userName + ' — كلمة المرور';
+    modal.classList.add('active');
+};
+
+// حفظ كلمة مرور جديدة في جدول account_credentials (العرض فقط؛ المؤسس عبر RLS)
+window.saveUserPassword = async function() {
+    const userId = document.getElementById('editingUserId').value;
+    const pwd = document.getElementById('editUserPassword').value;
+    if (!userId) return;
+    if (!pwd || pwd.length < 6) { showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning'); return; }
+    showLoading(true);
+    try {
+        const { error } = await supabaseClient
+            .from('account_credentials')
+            .upsert({ user_id: userId, plain_password: pwd, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
+        window._passwordsMap[userId] = pwd;
+        showToast('تم حفظ كلمة المرور', 'success');
+        closeUserEditModal();
+        // إعادة رسم الجدول النشط
+        const activeTab = document.querySelector('.founder-tab.active, .gm-tab.active');
+        const tabId = activeTab?.dataset.tab || '';
+        if (tabId === 'sellers') loadSellersTable();
+        else if (tabId === 'customers') loadCustomersTable();
+        else if (tabId === 'deliveries' || tabId === 'delivery') loadDeliveriesTable();
+    } catch (err) {
+        showToast(err.message || 'تعذر حفظ كلمة المرور (قد تحتاج صلاحية المؤسس)', 'error');
+    } finally { showLoading(false); }
+};
+
+// ====== سياسة إظهار كلمات المرور للمدراء (المؤسس فقط) ======
+window.togglePasswordsToManagers = async function() {
+    const cb = document.getElementById('policyShowPasswords');
+    if (!cb) return;
+    const value = cb.checked ? 'true' : 'false';
+    try {
+        const { error } = await supabaseClient
+            .from('app_settings')
+            .upsert({ setting_key: 'show_passwords_to_managers', setting_value: value, updated_at: new Date().toISOString() }, { onConflict: 'setting_key' });
+        if (error) throw error;
+        showToast(cb.checked ? 'تم تفعيل إظهار كلمات المرور للمدراء' : 'تم إخفاء كلمات المرور عن المدراء', 'success');
+        await loadPasswordsForTables();
+        // إعادة رسم الجداول الظاهرة
+        if (typeof loadSellersTable === 'function') loadSellersTable();
+    } catch (err) {
+        cb.checked = !cb.checked;
+        showToast('تعذر حفظ السياسة: ' + (err.message || ''), 'error');
+    }
 };
 
 // ====== دوال المستخدمين (عرض/تعديل/اتصال) ======
